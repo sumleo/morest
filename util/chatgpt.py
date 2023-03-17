@@ -29,6 +29,7 @@ class ChatGPT:
                 f"__Secure-next-auth.session-token={self.session_token}",
                 "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36",
+                # 'Content-Type': 'text/event-stream; charset=utf-8',
             }
         )
         self.headers["authorization"] = self.get_authorization()
@@ -62,13 +63,24 @@ class ChatGPT:
             "parent_message_id": str(uuid1()),
             "model": self.model,
         }
+
         r = requests.post(url, headers=self.headers, json=data, proxies=self.proxies)
         if r.status_code != 200:
             # 发送消息阻塞时等待20秒从新发送
             logger.error(r.json()["detail"])
             time.sleep(self.config.error_wait_time)
             return self.send_new_message(message)
-        result = json.loads(r.text.split("data: ")[-2])
+
+        last_line = None
+
+        for line in r.iter_lines():
+            if line:
+                decoded_line = line.decode("utf-8")
+                if len(decoded_line) == 12:
+                    break
+                last_line = decoded_line
+
+        result = json.loads(last_line[5:])
         text = "\n".join(result["message"]["content"]["parts"])
         conversation_id = result["conversation_id"]
         response_message_id = result["message"]["id"]

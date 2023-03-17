@@ -1,6 +1,9 @@
 import dataclasses
 from typing import Dict, List, Tuple
 
+import loguru
+
+from algo.chatgpt_agent import ChatGPTAgent
 from model.api import API
 from model.match_rule.base_rule import Rule
 from model.match_rule.substr_rule import SubStringRule
@@ -8,6 +11,8 @@ from model.method import Method
 from model.parameter_dependency import (InContextParameterDependency,
                                         ParameterDependency)
 from model.sequence import Sequence
+
+logger = loguru.logger
 
 
 @dataclasses.dataclass
@@ -75,6 +80,63 @@ class OperationDependencyGraph:
             sequence_list += self._generate_sequence(producer, Sequence())
         return sequence_list
 
+    def generate_sequence_by_chatgpt(self, chatgpt: ChatGPTAgent) -> List[Sequence]:
+        """
+        Generate sequence by chatgpt
+        :param chatgpt:
+        :return: List[Sequence]
+        """
+        sequence_list = []
+        raw_response = chatgpt.generate_sequence_from_method_list(self.method_list)
+        test_sequence_list = chatgpt.parse_raw_sequence(raw_response)
+        for test_sequence_line in test_sequence_list:
+            sequence = Sequence()
+            producer = None
+            for test_sequence in test_sequence_line:
+                consumer = self._find_method_by_name(test_sequence)
+                if consumer is None:
+                    continue
+                sequence.add_method(consumer)
+                # check has dependency
+                if (
+                    producer is not None
+                    and (producer, consumer) in self.producer_consumer_to_edge_map
+                ):
+                    dependency = InContextParameterDependency()
+                    dependency.producer = producer
+                    dependency.consumer = consumer
+                    dependency.producer_index = sequence.method_sequence.index(producer)
+                    dependency.consumer_index = sequence.method_sequence.index(consumer)
+                    for parameter_dependency in self.producer_consumer_to_edge_map[
+                        (producer, consumer)
+                    ].parameter_dependency_list:
+                        dependency.add_parameter_dependency(parameter_dependency)
+                    sequence.add_parameter_dependency(dependency)
+                producer = consumer
+            sequence_list.append(sequence)
+
+        sequence_list += self._generate_single_method_sequence()
+
+        return sequence_list
+
+    def _generate_single_method_sequence(self) -> List[Sequence]:
+        """
+        Generate sequence by single method
+        :return: List[Sequence]
+        """
+        sequence_list = []
+        for method in self.method_list:
+            sequence = Sequence()
+            sequence.add_method(method)
+            sequence_list.append(sequence)
+        return sequence_list
+
+    def _find_method_by_name(self, method_name: str) -> Method:
+        for method in self.method_list:
+            if method.operation_id in method_name:
+                return method
+        return None
+
     def _generate_sequence(
         self, producer: Method, sequence: Sequence
     ) -> List[Sequence]:
@@ -113,36 +175,3 @@ class OperationDependencyGraph:
             seq.add_parameter_dependency(dependency)
             sequence_list += self._generate_sequence(consumer, seq.copy())
         return sequence_list
-
-    def generate_prompt(self):
-        background = """
-I am a new tester of RESTful APIs. I want to test a brunch of RESTful APIs. I want to know the dependencies between parameters in different RESTful APIs to write test cases.
-I will give you a list of RESTful APIs. You need to tell me the dependencies between parameters in different RESTful APIs.
-For example, if I give you two RESTful APIs, one is POST /api/v1/users, and the other is POST /api/v1/users/{user_id}/friends, you need to tell me that the parameter user_id in the second API is the parameter user_id in the first API.
-First, I will give you a list of RESTful APIs by the this format: `API_NAME: METHOD_NAME: PATH (API_SUMMARY) (API_DESCRIPTION)` as following. For example, `API1: POST: /api/v1/users (Create a user) (Create a user with the given user name)`. and the empty string `` will be used if the value is empty.
-"""
-
-        api_description = ""
-
-        for method in self.method_list:
-            api_description += f"{method.operation_id}: {str.upper(method.method_type.name)}: {method.method_path} ({method.summary}) ({method.description})\n"
-        prompt = background + api_description
-        prompt += "Please give me all the posible dependencies between parameters in different RESTful APIs. The format is `PRODUCER_API_NAME: CONSUMER_API_NAME` as following. For example, `API1: API2`. and the `None` will be used if the value is empty. Each dependency is in one line. Please list all of the dependecies.\n"
-        prompt += """
-
-Secondly, I will give you a list of dependencies between parameters in different RESTful APIs by the this format: `PRODUCER_API_NAME: CONSUMER_API_NAME: PRODUCER_PARAMETER_NAME PRODUCER_PARAMETER_ATTRIBUTE_PATH (PRODUCER_PARAMETER_DESCRIPTION) -> CONSUMER_PARAMETER_NAME CONSUMER_PARAMETER_ATTRIBUTE_PATH (CONSUMER_PARAMETER_DESCRIPTION)` as following. For example, `API1: API2: user_id users.user_id (The user id) -> user_id users.user_id (The user id)`. and the `None` will be used if the value is empty.
-"""
-        parameter_dependency_description = ""
-        count = 0
-        for edge in self.edge_list:
-            for parameter_dependency in edge.parameter_dependency_list:
-                count += 1
-                parameter_dependency_description += f"{count}. {parameter_dependency.producer.operation_id}: {parameter_dependency.consumer.operation_id}: {parameter_dependency.producer_parameter.attribute_name} {parameter_dependency.producer_parameter.attribute_path} ({parameter_dependency.producer_parameter.description}) -> {parameter_dependency.consumer_parameter.attribute_name} {parameter_dependency.consumer_parameter.attribute_path} ({parameter_dependency.consumer_parameter.description})\n"
-            if count >= 20:
-                break
-        prompt += parameter_dependency_description
-        prompt += f"""
-Can you tell me the {count} dependencies listed above is correct or not? If it is correct, please tell me in "True". If it is not correct, please tell me in "False". If you don't know, please tell me in "None". Please each dependency in a line. For example, if the first dependency is correct, the second dependency is not correct, and the third dependency is correct, you need to tell me in "True", "False", "True". If you don't know the first dependency, you need to tell me in "None", "False", "True". PRODUCER_PARAMETER_DESCRIPTION and CONSUMER_PARAMETER_DESCRIPTION are optional. You should judge the correctness of the dependency by the PRODUCER_PARAMETER_NAME, PRODUCER_PARAMETER_ATTRIBUTE_PATH, CONSUMER_PARAMETER_NAME, and CONSUMER_PARAMETER_ATTRIBUTE_PATH.
-
-"""
-        return background + api_description

@@ -19,8 +19,20 @@ class Fuzzer:
         self.sequence_list: List[Sequence] = []
 
     def setup(self):
-        self.sequence_list = self.graph.generate_sequence()
+        self.chatgpt_agent.start_conversation()
+        self.sequence_list = self.graph.generate_sequence_by_chatgpt(self.chatgpt_agent)
         logger.info(f"generated {len(self.sequence_list)} sequences")
+        for seq in self.sequence_list:
+            result = self.chatgpt_agent.generate_request_instance_sequence_by_openapi_document(
+                seq.method_sequence
+            )
+            logger.info([method.signature for method in seq.method_sequence])
+            logger.info(result)
+
+        # for method in self.graph.method_list:
+        #     result = self.chatgpt_agent.generate_request_instance_by_openapi_document(method.method_raw_body)
+        #     logger.info(method.signature)
+        #     logger.info(result)
 
     def fuzz(self):
         pass

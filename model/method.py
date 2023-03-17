@@ -128,6 +128,6 @@ class Method:
         return hash(self.signature)
 
     def __eq__(self, other):
-        if not isinstance(other, Method):
+        if isinstance(other, Method):
             return self.signature == other.signature
         return False
