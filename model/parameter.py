@@ -126,6 +126,9 @@ class ParameterAttribute:
     def __repr__(self):
         return f"{self.parameter.signature}_{self.signature}"
 
+    def __eq__(self, other):
+        return self.attribute_path == other.attribute_path
+
 
 # remember to support requestBody
 
@@ -176,7 +179,7 @@ class Parameter:
                     parent_required=parameter_body.get("required", False),
                 )
 
-            if parameter_body.__contains__("content"):
+            elif parameter_body.__contains__("content"):
                 content: dict = parameter_body["content"]
                 for content_type in content:
                     if "json" not in content_type and "*/*" not in content_type:
@@ -256,7 +259,6 @@ class Parameter:
                 parent_attribute=parameter_attribute,
                 parent_required=parameter_attribute.global_required,
             )
-            parameter_attribute.add_child_parameter_attribute(child_parameter)
         elif parameter_attribute.parameter_type == ParameterType.OBJECT:
             required_list: List[str] = parameter_body.get("required", [])
             properties: dict = parameter_body.get("properties", {})
@@ -284,7 +286,6 @@ class Parameter:
                 child_attribute.global_required = (
                     parameter_attribute.global_required and is_required
                 )
-                parameter_attribute.add_child_parameter_attribute(child_attribute)
                 children.append(child_attribute)
 
             # add sibling

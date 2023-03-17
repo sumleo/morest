@@ -11,7 +11,7 @@ from model.api import API
 from model.operation_dependency_graph import OperationDependencyGraph
 from util.api_document_warpper import wrap_methods_from_open_api_document
 
-yaml_path = "/Users/liuyi/api-testing/code/morest/doc/erc20_swagger.json"
+yaml_path = "./pet-basic.json"
 parser = argparse.ArgumentParser()
 parser.add_argument("--yaml_path", type=str, default=yaml_path)
 args = parser.parse_args()
@@ -49,6 +49,9 @@ def main():
 
     # setup fuzzer
     fuzzer.setup()
+
+    # warm up
+    fuzzer.warm_up()
 
 
 def list_folder_extract_yaml_files(folder_path: str):

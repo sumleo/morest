@@ -113,6 +113,8 @@ class OperationDependencyGraph:
                         dependency.add_parameter_dependency(parameter_dependency)
                     sequence.add_parameter_dependency(dependency)
                 producer = consumer
+            if len(sequence.method_sequence) == 0:
+                continue
             sequence_list.append(sequence)
 
         sequence_list += self._generate_single_method_sequence()
