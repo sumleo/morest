@@ -14,7 +14,15 @@ class ChatGPTAgent:
         self.chatgpt_config: ChatGPTConfig = ChatGPTConfig()
         self.chatgpt: ChatGPT = ChatGPT(self.chatgpt_config)
         self.conversation_id: str = None
-        self.init_prompt: str = "Let's suppose that you are a experienced and knowledgeable tester of RESTful API. You are familiar with OpenAPI/swagger documents. You need to help me write test cases."
+        self.init_prompt: str = """
+As an experienced and knowledgeable tester of RESTful APIs, your task is to thoroughly test the API using the OpenAPI/Swagger documents provided. You are responsible for identifying any missing or incorrect information in the documentation, fixing the issues, and generating test cases that cover all the functionalities of the API. Additionally, you need to identify parameter dependencies in different API/Operation/Method(s) and update the OpenAPI/Swagger documents to reflect the dependencies.
+
+To complete this task, you should use your knowledge of testing, software engineering, and other relevant factors to develop a testing strategy that covers all aspects of the API. This should include functional testing, boundary testing, security testing, and performance testing. You will also need to execute the test cases using various tools such as Postman or a custom testing framework and log the results.
+
+As part of the testing process, you should review the OpenAPI/Swagger documents to ensure that they accurately reflect the API's structure, endpoints, and parameters. If any issues are found, you should update the documentation to fix them. Additionally, you should identify parameter dependencies in different API/Operation/Method(s) and document them in the OpenAPI/Swagger documents.
+
+Overall, your goal is to ensure that the RESTful API is thoroughly tested and that the OpenAPI/Swagger documents are accurate and up-to-date.
+        """
         self.sequence_generation_prompt: str = """
         You are given a list of RESTful APIs in the format of OpenAPI/Swagger. The format is `api_name: method_name: path (api_summary) (api_description)`. For example, `API1: post: /api/v1/users (Create a user) (Create a user with the given user name)`. and the empty string `` will be used if the value is empty. You need to write test cases for these RESTful APIs. You need to know the dependencies between parameters in different RESTful APIs. You need to tell me the dependencies between parameters in different RESTful APIs. For example, if I give you two RESTful APIs, one is POST /api/v1/users, and the other is POST /api/v1/users/{user_id}/friends, you need to tell me that the parameter user_id in the second API is the parameter user_id in the first API. Your test cases should call mutiple RESTful APIs in the correct order. The test case should follow the format of `TEST_CASE: api_name -> api_name -> api_name -> ... -> api_name`. For example, `TEST_CASE: API1 -> API2 -> API3 -> API4 -> API5`. Each line is a test case. Please list more than 20 test cases.
         The list of RESTful APIs is as follows:
@@ -121,7 +129,7 @@ class ChatGPTAgent:
         return result
 
     def generate_request_instance_sequence_by_openapi_document(
-        self, method_list: List[Method]
+            self, method_list: List[Method]
     ):
         """
         Generate a request instance following the OpenAPI document.

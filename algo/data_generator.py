@@ -15,7 +15,7 @@ from model.method import Method
 from model.parameter import Parameter, ParameterAttribute, ParameterType
 from model.parameter_dependency import (InContextParameterDependency,
                                         ParameterDependency)
-from model.response import Response
+from model.request_response import Response
 from model.sequence import Sequence
 
 
@@ -55,7 +55,9 @@ class DataGenerator:
         self.config: DataGenerationConfig = self.fuzzer.data_generation_config
 
     def _should_skip(self, parameter_attribute: ParameterAttribute) -> bool:
-        return False
+        if parameter_attribute.required:
+            return False
+        return True
 
     def generate_string_value(self, parameter_attribute: ParameterAttribute) -> str:
         # concrete implementation
@@ -173,7 +175,7 @@ class DataGenerator:
         return float(self.generate_integer_value(parameter_attribute))
 
     def generate_boolean_value(self, parameter_attribute: ParameterAttribute) -> bool:
-        res = np.random.choice([True, False])
+        res = np.random.choice(["true", "false"])
         return res
 
     def generate_array_value(

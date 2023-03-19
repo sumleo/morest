@@ -1,13 +1,19 @@
+import os.path
 from typing import Any, Dict, List, Tuple
+from urllib.parse import urljoin
 
+import loguru
 import requests
 
 from algo.data_generator import DataGenerator
 from algo.runtime_dictionary import RuntimeDictionary
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute
-from model.response import Response
+from model.request_response import Request, Response
 from model.sequence import Sequence
+from util.request_builder import build_request
+
+logger = loguru.logger
 
 
 class SequenceConverter:
@@ -30,6 +36,8 @@ class SequenceConverter:
         response_list: List[Response],
         last_response: Response,
     ) -> Any:
+        generated_value_tuple_list: List[Tuple[Parameter, Any]] = []
+
         for parameter_name in method.request_parameter:
             parameter: Parameter = method.request_parameter[parameter_name]
             # initialize data generator
@@ -37,6 +45,33 @@ class SequenceConverter:
                 self, method_index, method, sequence, last_response, response_list
             )
             value = data_generator.generate_value(parameter.parameter)
+
+            # if value is SKIP_SYMBOL, skip this parameter
+            if value == DataGenerator.SKIP_SYMBOL:
+                continue
+
+            generated_value_tuple_list.append((parameter, value))
+
+        return generated_value_tuple_list
+
+    def _do_request(self, method: Method, request: Request) -> Response:
+        request_actor = getattr(self.request_session, method.method_type.value)
+        url = self.fuzzer.config.url + request.url
+        raw_response = request_actor(
+            url,
+            params=request.params,
+            data=request.form_data,
+            json=request.data,
+            headers=request.headers,
+            files=request.files,
+            allow_redirects=False,
+            timeout=3,
+        )
+        if raw_response.status_code < 300:
+            logger.info(f"Request {method.method_type.value} {url} success")
+        if raw_response.status_code >= 500:
+            logger.info(f"Request {method.method_type.value} {url} failed")
+        return raw_response
 
     def convert(self, sequence: Sequence) -> Sequence:
         # renew session
@@ -47,11 +82,15 @@ class SequenceConverter:
 
         # generate value for each parameter in the sequence methods' parameters
         for method_index, method in enumerate(sequence.method_sequence):
-            self._generate_random_data(
+            # generate random data
+            generated_value = self._generate_random_data(
                 method_index, method, sequence, response_list, last_response
             )
 
-        # assemble data
+            # assemble data
+            request: Request = build_request(method, generated_value)
+
+            response = self._do_request(method, request)
 
         # make request
 
