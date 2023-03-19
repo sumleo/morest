@@ -1,4 +1,10 @@
 import dataclasses
+import enum
+
+
+class ChatGPTCommandType(enum.Enum):
+    INITIALIZE = "initialize"
+    GENERATE_SEQUENCE = "generate_sequence"
 
 
 @dataclasses.dataclass

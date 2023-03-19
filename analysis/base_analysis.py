@@ -9,7 +9,9 @@ class Analysis:
     def on_init(self, odg_graph: OperationDependencyGraph):
         pass
 
-    def on_request_response(self, sequence: Sequence, request: Request, response: Response):
+    def on_request_response(
+        self, sequence: Sequence, request: Request, response: Response
+    ):
         pass
 
     def on_iteration_end(self):

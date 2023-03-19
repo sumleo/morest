@@ -1,12 +1,48 @@
-from typing import Dict, List, Tuple
+import dataclasses
+import queue
+import threading
+from typing import Any, Dict, List, Tuple
 
 import loguru
 
-from constant.chatgpt_config import ChatGPTConfig
+from constant.chatgpt_config import ChatGPTCommandType, ChatGPTConfig
 from model.method import Method
 from util.chatgpt import ChatGPT
 
 logger = loguru.logger
+
+
+@dataclasses.dataclass
+class ChatGPTCommand:
+    command: ChatGPTCommandType = None
+
+    def execute(self, agent: "ChatGPTAgent") -> Any:
+        pass
+
+
+@dataclasses.dataclass
+class InitializeCommand(ChatGPTCommand):
+    command: ChatGPTCommandType = ChatGPTCommandType.INITIALIZE
+
+    def execute(self, agent: "ChatGPTAgent"):
+        agent.start_conversation()
+        return True
+
+
+@dataclasses.dataclass
+class GenerateSequenceFromMethodListCommand(ChatGPTCommand):
+    command: ChatGPTCommandType = ChatGPTCommandType.GENERATE_SEQUENCE
+    method_list: List[Method] = dataclasses.field(default_factory=list)
+
+    def execute(self, agent: "ChatGPTAgent"):
+        raw_sequence = agent.generate_sequence_from_method_list(self.method_list)
+        return raw_sequence
+
+
+@dataclasses.dataclass
+class CommandResponse:
+    command: ChatGPTCommand = None
+    result: Any = None
 
 
 class ChatGPTAgent:
@@ -21,12 +57,48 @@ To complete this task, you should use your knowledge of testing, software engine
 
 As part of the testing process, you should review the OpenAPI/Swagger documents to ensure that they accurately reflect the API's structure, endpoints, and parameters. If any issues are found, you should update the documentation to fix them. Additionally, you should identify parameter dependencies in different API/Operation/Method(s) and document them in the OpenAPI/Swagger documents.
 
-Overall, your goal is to ensure that the RESTful API is thoroughly tested and that the OpenAPI/Swagger documents are accurate and up-to-date.
+Overall, your goal is to ensure that the RESTful API is thoroughly tested and that the OpenAPI/Swagger documents are accurate and up-to-date. For this message, you just need to reply `OK` to continue.
         """
         self.sequence_generation_prompt: str = """
         You are given a list of RESTful APIs in the format of OpenAPI/Swagger. The format is `api_name: method_name: path (api_summary) (api_description)`. For example, `API1: post: /api/v1/users (Create a user) (Create a user with the given user name)`. and the empty string `` will be used if the value is empty. You need to write test cases for these RESTful APIs. You need to know the dependencies between parameters in different RESTful APIs. You need to tell me the dependencies between parameters in different RESTful APIs. For example, if I give you two RESTful APIs, one is POST /api/v1/users, and the other is POST /api/v1/users/{user_id}/friends, you need to tell me that the parameter user_id in the second API is the parameter user_id in the first API. Your test cases should call mutiple RESTful APIs in the correct order. The test case should follow the format of `TEST_CASE: api_name -> api_name -> api_name -> ... -> api_name`. For example, `TEST_CASE: API1 -> API2 -> API3 -> API4 -> API5`. Each line is a test case. Please list more than 20 test cases.
         The list of RESTful APIs is as follows:
         """
+        self.command_queue: queue.Queue = queue.Queue()
+        self.command_response_queue: queue.Queue = queue.Queue()
+        self.worker_thread: threading.Thread = threading.Thread(
+            target=self._execute_command_worker,
+            daemon=True,
+            name="ChatGPTAgentWorker",
+            args=(self.command_queue, self.command_response_queue),
+        )
+        # start worker thread
+        self.worker_thread.start()
+
+    def _init_chatgpt(self):
+        logger.info("initialize chatgpt")
+        initialize_command = InitializeCommand()
+        self.execute_command(initialize_command)
+
+    def execute_command(self, command: ChatGPTCommand):
+        self.command_queue.put(command)
+
+    def _execute_command_worker(
+        self, command_queue: queue.Queue, command_response_queue: queue.Queue
+    ):
+        logger.info("start command worker")
+
+        while True:
+            # Wait for a task to become available
+            command = command_queue.get()
+
+            # Execute time-consuming task
+            raw_result = command.execute(self)
+
+            # Generate command response
+            command_response = CommandResponse(command=command, result=raw_result)
+
+            # Notify main thread with result
+            command_response_queue.put(command_response)
 
     def start_conversation(self):
         if self.chatgpt_config.is_debugging:
@@ -129,7 +201,7 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
         return result
 
     def generate_request_instance_sequence_by_openapi_document(
-            self, method_list: List[Method]
+        self, method_list: List[Method]
     ):
         """
         Generate a request instance following the OpenAPI document.

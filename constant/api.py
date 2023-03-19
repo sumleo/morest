@@ -9,3 +9,8 @@ class MethodRequestType(enum.Enum):
     PATCH = "patch"
     HEAD = "head"
     OPTIONS = "options"
+
+
+class ResponseCustomizedStatusCode(enum.Enum):
+    TIMEOUT = 1000
+    EXCEPTION = 1001

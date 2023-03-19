@@ -53,6 +53,9 @@ def main():
     # warm up
     fuzzer.warm_up()
 
+    # start fuzzing
+    fuzzer.fuzz()
+
 
 def list_folder_extract_yaml_files(folder_path: str):
     yaml_file_absolute_path_list = glob.glob(folder_path + "/*.json")

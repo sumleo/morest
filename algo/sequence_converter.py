@@ -7,6 +7,7 @@ import requests
 
 from algo.data_generator import DataGenerator
 from algo.runtime_dictionary import RuntimeDictionary
+from constant.api import ResponseCustomizedStatusCode
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute
 from model.request_response import Request, Response
@@ -57,21 +58,33 @@ class SequenceConverter:
     def _do_request(self, method: Method, request: Request) -> Response:
         request_actor = getattr(self.request_session, method.method_type.value)
         url = self.fuzzer.config.url + request.url
-        raw_response = request_actor(
-            url,
-            params=request.params,
-            data=request.form_data,
-            json=request.data,
-            headers=request.headers,
-            files=request.files,
-            allow_redirects=False,
-            timeout=3,
-        )
-        if raw_response.status_code < 300:
-            logger.info(f"Request {method.method_type.value} {url} success")
-        if raw_response.status_code >= 500:
-            logger.info(f"Request {method.method_type.value} {url} failed")
-        return raw_response
+        response: Response = Response()
+        response.request = request
+        response.method = method
+
+        # do request
+        try:
+            raw_response: requests.Response = request_actor(
+                url,
+                params=request.params,
+                data=request.form_data,
+                json=request.data,
+                headers=request.headers,
+                files=request.files,
+                allow_redirects=False,
+                timeout=30,
+            )
+        except requests.exceptions.ReadTimeout as err:
+            logger.error(err)
+            response.status_code = ResponseCustomizedStatusCode.TIMEOUT.value
+        except Exception as e:  # probably an encoding error
+            raise e
+        else:
+            try:
+                response.parse_response(raw_response)
+            except Exception as e:  # returned value format not correct
+                logger.error(f"Error when parsing response: {e}, {raw_response.text}")
+        return response
 
     def convert(self, sequence: Sequence) -> Sequence:
         # renew session
@@ -90,7 +103,14 @@ class SequenceConverter:
             # assemble data
             request: Request = build_request(method, generated_value)
 
+            # do response
             response = self._do_request(method, request)
+
+            # add to runtime dictionary
+            self.runtime_dictionary.add_response(response)
+
+            # call analysis function
+            self.fuzzer._on_request_response(sequence, request, response)
 
         # make request
 

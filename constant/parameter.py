@@ -9,6 +9,7 @@ class ParameterType(enum.Enum):
     ARRAY = "array"
     FILE = "file"
     OBJECT = "object"
+    NULL = "null"
 
 
 class ParameterLocation(enum.Enum):

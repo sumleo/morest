@@ -58,6 +58,7 @@ class ParameterAttributeSchemaInfo:
 class ParameterAttribute:
     schema_info: ParameterAttributeSchemaInfo = None
     parameter: "Parameter" = None
+    parameter_value_list: List[Any] = None
 
     def __init__(
         self,
@@ -81,6 +82,11 @@ class ParameterAttribute:
         self.description: str = parameter_attribute_raw_body.get("description", None)
         self.required: bool = False
         self.global_required: bool = False
+
+        # if parameter is None, this is a runtime parameter
+        if self.parameter is None:
+            self.parameter_value_list = []
+            return
 
         # check if the parameter attribute is a schema
         if (
@@ -124,10 +130,22 @@ class ParameterAttribute:
         return f"type:({self.parameter_type.value})_path({self.attribute_path})"
 
     def __repr__(self):
-        return f"{self.parameter.signature}_{self.signature}"
+        if self.parameter is not None:
+            return f"{self.parameter.signature}_{self.signature}"
+        return f"{self.signature}"
 
     def __eq__(self, other):
         return self.attribute_path == other.attribute_path
+
+    def __hash__(self):
+        return hash(self.attribute_path)
+
+    def add_parameter_value(self, parameter_value):
+        self.parameter_value_list.append(parameter_value)
+
+    def get_parameter_value(self):
+        for value in self.parameter_value_list:
+            yield value
 
 
 # remember to support requestBody
