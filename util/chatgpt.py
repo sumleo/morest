@@ -124,6 +124,41 @@ class ChatGPT:
         text = "\n".join(response_result["message"]["content"]["parts"])
         return text
 
+    def get_conversation_history(self, limit=20, offset=0):
+        # Get the conversation id in the history
+        url = "https://chat.openai.com/backend-api/conversations"
+        query_params = {
+            "limit": limit,
+            "offset": offset,
+        }
+        r = requests.get(
+            url, headers=self.headers, params=query_params, proxies=self.proxies
+        )
+        if r.status_code == 200:
+            json_data = r.json()
+            conversations = {}
+            for item in json_data["items"]:
+                conversations[item["id"]] = item["title"]
+            return conversations
+        else:
+            logger.error("Failed to retrieve history")
+            return None
+
+    def delete_conversation(self, conversation_id=None):
+        # delete conversation with its uuid
+        if not conversation_id:
+            return
+        url = f"https://chat.openai.com/backend-api/conversation/{conversation_id}"
+        data = {
+            "is_visible": False,
+        }
+        r = requests.patch(url, headers=self.headers, json=data, proxies=self.proxies)
+        if r.status_code == 200:
+            return True
+        else:
+            logger.error("Failed to delete conversation")
+            return False
+
     def extract_code_fragments(self, text):
         code_fragments = re.findall(r"```(.*?)```", text, re.DOTALL)
         return code_fragments
