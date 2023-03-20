@@ -153,6 +153,11 @@ class ChatGPT:
             "is_visible": False,
         }
         r = requests.patch(url, headers=self.headers, json=data, proxies=self.proxies)
+
+        # delete conversation id locally
+        if conversation_id in self.latest_message_id_dict:
+            del self.latest_message_id_dict[conversation_id]
+
         if r.status_code == 200:
             return True
         else:
