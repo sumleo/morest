@@ -8,6 +8,7 @@ from model.api import API
 from model.match_rule.base_rule import Rule
 from model.match_rule.substr_rule import SubStringRule
 from model.method import Method
+from model.parameter import ParameterAttribute
 from model.parameter_dependency import (InContextParameterDependency,
                                         ParameterDependency)
 from model.sequence import Sequence
@@ -35,6 +36,12 @@ class OperationDependencyGraph:
         self.producer_consumer_edge_map: Dict[Method, List[Edge]] = {}
         self.consumer_producer_edge_map: Dict[Method, List[Edge]] = {}
         self.producer_consumer_to_edge_map: Dict[Tuple[Method, Method], Edge] = {}
+        self.producer_and_parameter_attribute_to_edge_map: Dict[
+            Tuple[Method, ParameterAttribute], List[ParameterDependency]
+        ] = {}
+        self.consumer_and_parameter_attribute_to_edge_map: Dict[
+            Tuple[Method, ParameterAttribute], List[ParameterDependency]
+        ] = {}
 
     def build(self):
         # extract methods from apis
@@ -67,6 +74,36 @@ class OperationDependencyGraph:
                             self.consumer_producer_edge_map[consumer] = []
                         self.consumer_producer_edge_map[consumer].append(edge)
                         self.producer_consumer_to_edge_map[(producer, consumer)] = edge
+
+                        for parameter_dependency in parameter_dependency_list:
+                            producer_tuple = (
+                                producer,
+                                parameter_dependency.producer_parameter,
+                            )
+                            if (
+                                producer_tuple
+                                not in self.producer_and_parameter_attribute_to_edge_map
+                            ):
+                                self.producer_and_parameter_attribute_to_edge_map[
+                                    producer_tuple
+                                ] = []
+                            self.producer_and_parameter_attribute_to_edge_map[
+                                producer_tuple
+                            ].append(parameter_dependency)
+                            consumer_tuple = (
+                                consumer,
+                                parameter_dependency.consumer_parameter,
+                            )
+                            if (
+                                consumer_tuple
+                                not in self.consumer_and_parameter_attribute_to_edge_map
+                            ):
+                                self.consumer_and_parameter_attribute_to_edge_map[
+                                    consumer_tuple
+                                ] = []
+                            self.consumer_and_parameter_attribute_to_edge_map[
+                                consumer_tuple
+                            ].append(parameter_dependency)
                         break
 
     def generate_sequence(self) -> List[Sequence]:

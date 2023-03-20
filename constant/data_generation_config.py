@@ -35,3 +35,12 @@ class DataGenerationConfig:
 
     # probability to take max value
     max_value_probability: float = 0.2
+
+    # probability to do not use dictionary value
+    no_dictionary_value_probability: float = 0.05
+
+    # probability to do not use odg value
+    no_odg_value_probability: float = 0.05
+
+    # probability to use random runtime dictionary value
+    random_runtime_dictionary_value_probability: float = 0.5

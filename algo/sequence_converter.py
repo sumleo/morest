@@ -6,7 +6,7 @@ import loguru
 import requests
 
 from algo.data_generator import DataGenerator
-from algo.runtime_dictionary import RuntimeDictionary
+from algo.runtime_dictionary import RuntimeDictionary, RuntimeValueResult
 from constant.api import ResponseCustomizedStatusCode
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute
@@ -38,7 +38,7 @@ class SequenceConverter:
         last_response: Response,
     ) -> Any:
         generated_value_tuple_list: List[Tuple[Parameter, Any]] = []
-
+        runtime_dictionary_result_list: List[RuntimeValueResult] = []
         for parameter_name in method.request_parameter:
             parameter: Parameter = method.request_parameter[parameter_name]
             # initialize data generator
@@ -52,8 +52,11 @@ class SequenceConverter:
                 continue
 
             generated_value_tuple_list.append((parameter, value))
+            runtime_dictionary_result_list.extend(
+                data_generator.runtime_value_result_list
+            )
 
-        return generated_value_tuple_list
+        return generated_value_tuple_list, runtime_dictionary_result_list
 
     def _do_request(self, method: Method, request: Request) -> Response:
         request_actor = getattr(self.request_session, method.method_type.value)
@@ -96,7 +99,7 @@ class SequenceConverter:
         # generate value for each parameter in the sequence methods' parameters
         for method_index, method in enumerate(sequence.method_sequence):
             # generate random data
-            generated_value = self._generate_random_data(
+            generated_value, runtime_dictionary_result = self._generate_random_data(
                 method_index, method, sequence, response_list, last_response
             )
 
@@ -108,6 +111,13 @@ class SequenceConverter:
 
             # add to runtime dictionary
             self.runtime_dictionary.add_response(response)
+
+            # update dependency success count
+            for runtime_dictionary_result_item in runtime_dictionary_result:
+                if 200 <= response.status_code < 300:
+                    runtime_dictionary_result_item.dependency.update(1)
+                else:
+                    runtime_dictionary_result_item.dependency.update(-1)
 
             # call analysis function
             self.fuzzer._on_request_response(sequence, request, response)

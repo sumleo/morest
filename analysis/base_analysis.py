@@ -5,6 +5,7 @@ from model.sequence import Sequence
 
 class Analysis:
     name: str = "base_analysis"
+    fuzzer: "Fuzzer" = None
 
     def on_init(self, odg_graph: OperationDependencyGraph):
         pass

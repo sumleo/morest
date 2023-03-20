@@ -1,3 +1,5 @@
+import datetime
+import pathlib
 import time
 from typing import Dict, List, Tuple
 
@@ -20,6 +22,11 @@ ANALYSIS = [StatisticAnalysis]
 
 class Fuzzer:
     def __init__(self, graph: OperationDependencyGraph, config: FuzzerConfig):
+        self.begin_time: float = time.time()
+        self.start_time_str: str = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        self.output_dir: pathlib.Path = (
+            pathlib.Path(config.output_dir) / self.start_time_str
+        )
         self.graph: OperationDependencyGraph = graph
         self.config: FuzzerConfig = config
         self.time_budget: float = config.time_budget
@@ -32,26 +39,15 @@ class Fuzzer:
     def setup(self):
         logger.info("Fuzzer setup")
         self._init_analysis()
-        self.chatgpt_agent._init_chatgpt()
-        # self.chatgpt_agent.start_conversation()
+        self.chatgpt_agent.init_chatgpt()
+        self.chatgpt_agent.generate_sequence_from_method_list(self.graph.method_list)
         self.sequence_list = self.graph._generate_single_method_sequence()
         logger.info(f"generated {len(self.sequence_list)} sequences")
-        # for seq in self.sequence_list:
-        #     result = self.chatgpt_agent.generate_request_instance_sequence_by_openapi_document(
-        #         seq.method_sequence
-        #     )
-        #     logger.info([method.signature for method in seq.method_sequence])
-        #     logger.info(result)
-
-        # for method in self.graph.method_list:
-        #     result = self.chatgpt_agent.generate_request_instance_by_openapi_document(method.method_raw_body)
-        #     logger.info(method.signature)
-        #     logger.info(result)
 
     def _init_analysis(self):
         for analysis in ANALYSIS:
             analyzer = analysis()
-            analyzer.on_init(self.graph)
+            analyzer.on_init(self)
             self.analysis_list.append(analyzer)
 
     def _on_iteration_end(self):
@@ -73,9 +69,13 @@ class Fuzzer:
                 self.sequence_converter.convert(sequence)
             self._on_iteration_end()
 
-    def _run_sequence(self, sequence: Sequence):
-        logger.info("run sequence")
-        self.sequence_converter.convert(sequence)
-
     def fuzz(self):
-        pass
+        converter = self.sequence_converter
+
+        while self.begin_time + self.time_budget > time.time():
+            # convert sequence to request
+            for sequence in self.sequence_list:
+                converter.convert(sequence)
+
+            # handlers for each iteration
+            self._on_iteration_end()

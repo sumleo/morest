@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import rstr
 
-from algo.runtime_dictionary import RuntimeDictionary
+from algo.runtime_dictionary import RuntimeDictionary, RuntimeValueResult
 from constant.data_generation_config import DataGenerationConfig
 from constant.parameter import ParameterType
 from model.method import Method
@@ -53,9 +53,17 @@ class DataGenerator:
             ParameterType.FILE: self.generate_file_value,
         }
         self.config: DataGenerationConfig = self.fuzzer.data_generation_config
+        self.runtime_value_result_list: List[RuntimeValueResult] = []
 
     def _should_skip(self, parameter_attribute: ParameterAttribute) -> bool:
         if parameter_attribute.required:
+            return False
+        if (
+            parameter_attribute.parent_parameter_attribute is None
+            and np.random.random() > self.config.parent_parameter_skip_probability
+        ):
+            return False
+        if np.random.random() > self.config.child_parameter_skip_probability:
             return False
         return True
 
@@ -71,6 +79,12 @@ class DataGenerator:
             return enum
 
         # use runtime dictionary
+        runtime_value_result = self.runtime_dictionary.fetch_value(
+            self, parameter_attribute
+        )
+        if runtime_value_result.should_use:
+            self.runtime_value_result_list.append(runtime_value_result)
+            return runtime_value_result.value
 
         if (
             parameter_attribute.schema_info.has_max_length
@@ -130,7 +144,12 @@ class DataGenerator:
             return enum
 
         # use runtime dictionary
-
+        runtime_value_result = self.runtime_dictionary.fetch_value(
+            self, parameter_attribute
+        )
+        if runtime_value_result.should_use:
+            self.runtime_value_result_list.append(runtime_value_result)
+            return runtime_value_result.value
         # bypass for enum
         if np.random.random() < self.config.enum_number_value_probability:
             res = np.random.randint(0, 2)
@@ -181,6 +200,12 @@ class DataGenerator:
     def generate_array_value(
         self, parameter_attribute: ParameterAttribute
     ) -> List[Any]:
+        # use runtime dictionary
+        # runtime_value_result = self.runtime_dictionary.fetch_value(self, parameter_attribute)
+        # if runtime_value_result.should_use:
+        #     self.runtime_value_result_list.append(runtime_value_result)
+        #     return runtime_value_result.value
+
         result = []
 
         for child_parameter in parameter_attribute.child_parameter_attribute_list:
@@ -194,6 +219,12 @@ class DataGenerator:
     def generate_object_value(
         self, parameter_attribute: ParameterAttribute
     ) -> Dict[str, Any]:
+        # use runtime dictionary
+        # runtime_value_result = self.runtime_dictionary.fetch_value(self, parameter_attribute)
+        # if runtime_value_result.should_use:
+        #     self.runtime_value_result_list.append(runtime_value_result)
+        #     return runtime_value_result.value
+
         result = {}
 
         for child_parameter in parameter_attribute.child_parameter_attribute_list:
@@ -210,6 +241,8 @@ class DataGenerator:
         return file
 
     def generate_value(self, parameter_attribute: ParameterAttribute) -> Any:
+        if self._should_skip(parameter_attribute):
+            return self.SKIP_SYMBOL
         parameter_type: ParameterType = parameter_attribute.parameter_type
         value_generator: Any = self.value_generator[parameter_type]
         value = value_generator(parameter_attribute)

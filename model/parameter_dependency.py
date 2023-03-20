@@ -12,6 +12,8 @@ class ParameterDependency:
     consumer: Method = None
     producer_parameter: ParameterAttribute = None
     consumer_parameter: ParameterAttribute = None
+    N: float = 0  # Estimated values of each arm
+    Q: float = 5  # Number of times each arm has been selected
 
     @property
     def signature(self):
@@ -19,6 +21,23 @@ class ParameterDependency:
 
     def __repr__(self):
         return self.signature
+
+    def __hash__(self):
+        return hash(
+            self.signature + f"{self.producer.signature}{self.consumer.signature}"
+        )
+
+    def __eq__(self, other):
+        return (
+            self.signature == other.signature
+            and self.producer == other.producer
+            and self.consumer == other.consumer
+        )
+
+    def update(self, reward):
+        # Update the estimated value of the chosen arm
+        self.N += 1
+        self.Q += (reward - self.Q) / self.N
 
 
 @dataclasses.dataclass

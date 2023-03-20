@@ -35,7 +35,7 @@ class GenerateSequenceFromMethodListCommand(ChatGPTCommand):
     method_list: List[Method] = dataclasses.field(default_factory=list)
 
     def execute(self, agent: "ChatGPTAgent"):
-        raw_sequence = agent.generate_sequence_from_method_list(self.method_list)
+        raw_sequence = agent._generate_sequence_from_method_list(self.method_list)
         return raw_sequence
 
 
@@ -71,13 +71,21 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
             name="ChatGPTAgentWorker",
             args=(self.command_queue, self.command_response_queue),
         )
+        self.semaphore = threading.Semaphore(0)
         # start worker thread
         self.worker_thread.start()
 
-    def _init_chatgpt(self):
+    def init_chatgpt(self):
         logger.info("initialize chatgpt")
         initialize_command = InitializeCommand()
         self.execute_command(initialize_command)
+
+    def generate_sequence_from_method_list(self, method_list: List[Method]) -> str:
+        logger.info("generate sequence from method list")
+        generate_sequence_command = GenerateSequenceFromMethodListCommand(
+            method_list=method_list
+        )
+        self.execute_command(generate_sequence_command)
 
     def execute_command(self, command: ChatGPTCommand):
         self.command_queue.put(command)
@@ -86,10 +94,16 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
         self, command_queue: queue.Queue, command_response_queue: queue.Queue
     ):
         logger.info("start command worker")
-
+        has_task = False
         while True:
+            if has_task:
+                continue
+
             # Wait for a task to become available
             command = command_queue.get()
+
+            # Indicate that a task is available
+            has_task = True
 
             # Execute time-consuming task
             raw_result = command.execute(self)
@@ -100,6 +114,9 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
             # Notify main thread with result
             command_response_queue.put(command_response)
 
+            # Indicate that the task is complete
+            has_task = False
+
     def start_conversation(self):
         if self.chatgpt_config.is_debugging:
             logger.info("debugging mode, skip starting conversation")
@@ -109,7 +126,7 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
         logger.info(f"conversation id: {self.conversation_id}")
         logger.info(f"chatgpt response: {text}")
 
-    def generate_sequence_from_method_list(self, method_list: List[Method]) -> str:
+    def _generate_sequence_from_method_list(self, method_list: List[Method]) -> str:
         if self.chatgpt_config.is_debugging:
             logger.info("debugging mode, skip generating sequence")
             return """

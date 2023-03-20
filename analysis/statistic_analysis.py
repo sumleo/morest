@@ -1,3 +1,4 @@
+import time
 from typing import Dict, List, Tuple
 
 import loguru
@@ -14,8 +15,10 @@ logger = loguru.logger
 class StatisticAnalysis(Analysis):
     name = "statistic_analysis"
 
-    def on_init(self, odg_graph: OperationDependencyGraph):
-        self.method_list: List[Method] = list(odg_graph.method_list)
+    def on_init(self, fuzzer: "Fuzzer"):
+        self.begin_time: float = time.time()
+        self.fuzzer: "Fuzzer" = fuzzer
+        self.method_list: List[Method] = list(fuzzer.graph.method_list)
         self.method_request_count: Dict[Method, int] = {
             method: 0 for method in self.method_list
         }
@@ -74,6 +77,19 @@ class StatisticAnalysis(Analysis):
         logger.info(f"Total invalid method count: {len(invalid_method_set)}")
         for method in invalid_method_set:
             logger.info(f"Method {method} is neither success nor failed")
+
+        # list never success methods
+        never_success_method_set = set(self.method_list) - self.total_success_method_set
+        logger.info(
+            f"Total never success method count: {len(never_success_method_set)}"
+        )
+        for method in never_success_method_set:
+            logger.info(f"Method {method} is never success")
+
+        # calculate qps
+        end_time = time.time()
+        qps = self.total_request_count / (end_time - self.begin_time)
+        logger.info(f"QPS: {qps}")
 
     def on_end(self):
         pass
