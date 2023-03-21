@@ -85,7 +85,9 @@ class StatisticAnalysis(Analysis):
         )
         for method in never_success_method_set:
             logger.info(f"Method {method} is never success")
-
+        self.fuzzer.never_success_method_set = never_success_method_set
+        self.fuzzer.success_method_set = self.total_success_method_set
+        self.fuzzer.failed_method_set = self.total_failed_method_set
         # calculate qps
         end_time = time.time()
         qps = self.total_request_count / (end_time - self.begin_time)

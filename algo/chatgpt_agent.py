@@ -1,12 +1,16 @@
+import ast
 import dataclasses
+import json
 import queue
+import re
 import threading
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Set, Tuple
 
 import loguru
 
 from constant.chatgpt_config import ChatGPTCommandType, ChatGPTConfig
 from model.method import Method
+from model.request_response import Request
 from util.chatgpt import ChatGPT
 
 logger = loguru.logger
@@ -18,6 +22,12 @@ class ChatGPTCommand:
 
     def execute(self, agent: "ChatGPTAgent") -> Any:
         pass
+
+
+@dataclasses.dataclass
+class CommandResponse:
+    command: ChatGPTCommand = None
+    result: Any = None
 
 
 @dataclasses.dataclass
@@ -36,20 +46,28 @@ class GenerateSequenceFromMethodListCommand(ChatGPTCommand):
 
     def execute(self, agent: "ChatGPTAgent"):
         raw_sequence = agent._generate_sequence_from_method_list(self.method_list)
-        return raw_sequence
+        return agent.parse_raw_sequence(raw_sequence)
 
 
 @dataclasses.dataclass
-class CommandResponse:
-    command: ChatGPTCommand = None
-    result: Any = None
+class GeneratePlainInstanceFromMethodDocCommand(ChatGPTCommand):
+    command: ChatGPTCommandType = ChatGPTCommandType.GENERATE_PLAIN_INSTANCE
+    method_list: List[Method] = dataclasses.field(default_factory=list)
+
+    def execute(self, agent: "ChatGPTAgent"):
+        raw_response = agent._generate_request_instance_by_openapi_document(
+            self.method_list
+        )
+        return agent._parse_request_instance_from_chatgpt_result(raw_response)
 
 
 class ChatGPTAgent:
-    def __init__(self):
+    def __init__(self, fuzzer: "Fuzzer"):
+        self.fuzzer: "Fuzzer" = fuzzer
         self.chatgpt_config: ChatGPTConfig = ChatGPTConfig()
         self.chatgpt: ChatGPT = ChatGPT(self.chatgpt_config)
         self.conversation_id: str = None
+        self.has_pending_method_instance_generation: bool = False
         self.init_prompt: str = """
 As an experienced and knowledgeable tester of RESTful APIs, your task is to thoroughly test the API using the OpenAPI/Swagger documents provided. You are responsible for identifying any missing or incorrect information in the documentation, fixing the issues, and generating test cases that cover all the functionalities of the API. Additionally, you need to identify parameter dependencies in different API/Operation/Method(s) and update the OpenAPI/Swagger documents to reflect the dependencies.
 
@@ -60,18 +78,70 @@ As part of the testing process, you should review the OpenAPI/Swagger documents 
 Overall, your goal is to ensure that the RESTful API is thoroughly tested and that the OpenAPI/Swagger documents are accurate and up-to-date. For this message, you just need to reply `OK` to continue.
         """
         self.sequence_generation_prompt: str = """
-        You are given a list of RESTful APIs in the format of OpenAPI/Swagger. The format is `api_name: method_name: path (api_summary) (api_description)`. For example, `API1: post: /api/v1/users (Create a user) (Create a user with the given user name)`. and the empty string `` will be used if the value is empty. You need to write test cases for these RESTful APIs. You need to know the dependencies between parameters in different RESTful APIs. You need to tell me the dependencies between parameters in different RESTful APIs. For example, if I give you two RESTful APIs, one is POST /api/v1/users, and the other is POST /api/v1/users/{user_id}/friends, you need to tell me that the parameter user_id in the second API is the parameter user_id in the first API. Your test cases should call mutiple RESTful APIs in the correct order. The test case should follow the format of `TEST_CASE: api_name -> api_name -> api_name -> ... -> api_name`. For example, `TEST_CASE: API1 -> API2 -> API3 -> API4 -> API5`. Each line is a test case. Please list more than 20 test cases.
+        You are given a list of RESTful APIs in the format of OpenAPI/Swagger. Each API is defined as `api_name: method_name: path (api_summary) (api_description)`. For instance, `API1: post: /api/v1/users (Create a user) (Create a user with the given user name)`. An empty string `("")` is used if the value is empty. Your task is to write test cases for these APIs.
+        Your test cases should call multiple RESTful APIs in the correct order.
+        Please provide at least 20 test cases. Do not include any explanation and descriptions in your test cases. You just need to provide the test cases.  Each test case should begin with `TEST_CASE:`, following the format of `TEST_CASE: api_name -> api_name -> api_name -> ... -> api_name`, such as `TEST_CASE: API1 -> API2 -> API3 -> API4 -> API5`.
         The list of RESTful APIs is as follows:
+        
+        """
+
+        self.batch_input_prompt: str = """
+        Due to token limit, you just need to reply `OK` to continue until I ask you questions.
+        """
+
+        self.generate_instance_chunk_size = 5
+
+        self.plain_instance_generation_prompt: str = """
+        You are given several RESTful API in the format of OpenAPI/Swagger documentation. 
+        Please provide only one request instance for each API in separate json schema sequentially, following the format below to be used as arguments of Python's libarary. `requests`:
+        
+        ```json
+        {
+            "path":<path>,
+            "params": <params>,
+            "form_data":<form_data>,
+            "json_data":<data>,
+            "headers":<headers>,
+            "files":<files>,
+        }
+        ```
+        
+        path - (optional)  path variables of the request
+
+        params – (optional) Dictionary, list of tuples or bytes to send in the query string for the Request.
+        
+        form_data – (optional) Dictionary, list of tuples, bytes, or file-like object to send in the body of the Request. It's in the body as form-data.
+        
+        json_data – (optional) A JSON serializable Python object to send in the body of the Request.
+        
+        headers – (optional) Dictionary of HTTP Headers to send with the Request=-=
+        
+        files – (optional) Dictionary of 'name': file-like-objects (or {'name': file-tuple}) for multipart encoding upload. file-tuple can be a 2-tuple ('filename', fileobj), 3-tuple ('filename', fileobj, 'content_type') or a 4-tuple ('filename', fileobj, 'content_type', custom_headers), where 'content-type' is a string defining the content type of the given file and custom_headers a dict-like object containing additional headers to add for the file.
+        
+        Do not include any explanation and descriptions in your request instances. You just need to provide the request instances. Each request instance should begin with `REQUEST_INSTANCE:` in one line, following the format of `REQUEST_INSTANCE: <request_instance>`, such as `REQUEST_INSTANCE: {"path":{"petId":1}}`.
+        
+        The RESTful API documentation is as follows:
+
         """
         self.command_queue: queue.Queue = queue.Queue()
         self.command_response_queue: queue.Queue = queue.Queue()
+        self.command_response_handler_map: Dict[
+            ChatGPTCommandType, Callable[[CommandResponse], None]
+        ] = {
+            ChatGPTCommandType.INITIALIZE: lambda response: logger.info(
+                "initialize chatgpt"
+            ),
+            ChatGPTCommandType.GENERATE_SEQUENCE: lambda response: logger.info(
+                "generate sequence from method list"
+            ),
+            ChatGPTCommandType.GENERATE_PLAIN_INSTANCE: self._handle_generate_plain_instance_response,
+        }
         self.worker_thread: threading.Thread = threading.Thread(
             target=self._execute_command_worker,
             daemon=True,
             name="ChatGPTAgentWorker",
             args=(self.command_queue, self.command_response_queue),
         )
-        self.semaphore = threading.Semaphore(0)
         # start worker thread
         self.worker_thread.start()
 
@@ -102,6 +172,10 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
             # Wait for a task to become available
             command = command_queue.get()
 
+            # if debug mode, skip command
+            if self.chatgpt_config.is_debugging:
+                continue
+
             # Indicate that a task is available
             has_task = True
 
@@ -118,71 +192,12 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
             has_task = False
 
     def start_conversation(self):
-        if self.chatgpt_config.is_debugging:
-            logger.info("debugging mode, skip starting conversation")
-            return
         logger.info("start conversation")
         text, self.conversation_id = self.chatgpt.send_new_message(self.init_prompt)
         logger.info(f"conversation id: {self.conversation_id}")
         logger.info(f"chatgpt response: {text}")
 
     def _generate_sequence_from_method_list(self, method_list: List[Method]) -> str:
-        if self.chatgpt_config.is_debugging:
-            logger.info("debugging mode, skip generating sequence")
-            return """
-            Here are more than 20 test cases that test different scenarios of the given RESTful APIs:
-
-1. TEST_CASE: uploadFile -> addPet -> getOrderById
-   Description: Uploads an image, adds a new pet to the store, and retrieves the order by ID.
-
-2. TEST_CASE: addPet -> updatePet -> getPetById
-   Description: Adds a new pet to the store, updates it, and retrieves the pet by ID.
-
-3. TEST_CASE: findPetsByStatus -> updatePetWithForm -> deletePet
-   Description: Finds pets by status, updates a pet with form data, and deletes the pet.
-
-4. TEST_CASE: findPetsByTags -> getOrderById -> deleteOrder
-   Description: Finds pets by tags, retrieves an order by ID, and deletes the order.
-
-5. TEST_CASE: getPetById -> updatePet -> placeOrder
-   Description: Retrieves a pet by ID, updates it, and places an order for the pet.
-
-6. TEST_CASE: createUsersWithArrayInput -> createUsersWithListInput -> getUserByName
-   Description: Creates a list of users with an array input, creates a list of users with a list input, and retrieves a user by name.
-
-7. TEST_CASE: getUserByName -> updateUser -> deleteUser
-   Description: Retrieves a user by name, updates it, and deletes it.
-
-8. TEST_CASE: loginUser -> getInventory -> logoutUser
-   Description: Logs in a user, retrieves pet inventories by status, and logs out the user.
-
-9. TEST_CASE: createUser -> updateUser -> getUserByName
-   Description: Creates a user, updates it, and retrieves it by name.
-
-10. TEST_CASE: updatePet -> deletePet -> placeOrder -> getOrderById
-   Description: Updates a pet, deletes it, places an order for a pet, and retrieves the order by ID.
-
-11. TEST_CASE: getInventory -> addPet -> updatePetWithForm -> findPetsByTags -> deletePet
-   Description: Retrieves pet inventories by status, adds a new pet to the store, updates a pet with form data, finds pets by tags, and deletes a pet.
-
-12. TEST_CASE: findPetsByTags -> createUsersWithArrayInput -> createUsersWithListInput -> getUserByName -> updateUser -> deleteUser
-   Description: Finds pets by tags, creates a list of users with an array input, creates a list of users with a list input, retrieves a user by name, updates it, and deletes it.
-
-13. TEST_CASE: getInventory -> addPet -> createUsersWithArrayInput -> createUser -> deleteUser -> deletePet
-   Description: Retrieves pet inventories by status, adds a new pet to the store, creates a list of users with an array input, creates a user, deletes the user, and deletes the pet.
-
-14. TEST_CASE: getPetById -> updatePetWithForm -> createUsersWithListInput -> getUserByName -> updateUser -> deleteUser
-   Description: Retrieves a pet by ID, updates it with form data, creates a list of users with a list input, retrieves a user by name, updates it, and deletes it.
-
-15. TEST_CASE: createUser -> loginUser -> updateUser -> deleteUser -> logoutUser
-   Description: Creates a user, logs in the user, updates it, deletes it, and logs out the user.
-
-16. TEST_CASE: loginUser -> getUserByName -> updateUser -> logoutUser
-   Description: Logs in a user, retrieves it by name, updates it, and logs out the user.
-
-17. TEST_CASE: createUsersWithArrayInput -> createUser -> updateUser -> deleteUser -> createUsersWithListInput -> getUserByName
-   Description: Creates a list of users with an array input, creates a user, updates it, deletes it, creates
-            """
         logger.info("generate sequence from method list")
         prompt: str = self.sequence_generation_prompt
         for method in method_list:
@@ -198,26 +213,27 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
                 test_case_list.append(token_list)
         return test_case_list
 
-    def generate_request_instance_by_openapi_document(self, api_document: dict):
+    def _generate_request_instance_by_openapi_document(self, method_list: List[Method]):
         """
         Generate a request instance following the OpenAPI document.
 
         :param api_document:
         :return:
         """
+        api_document = ""
+        for method in method_list:
+            api_fragment = {method.method_path: method.method_raw_body}
+            api_document += f"{api_fragment}\n"
         prompt: str = f"""
-        Generate an request instance following the OpenAPI document:
-    
+        {self.plain_instance_generation_prompt}
+        
         {api_document}
-        
-        The generated request instance is formatted as a JSON data. Use the attribute `query` to store the query parameters, `header` to store the header parameters, `path` to store the path parameters, `body` to store the body parameters, and `formData` to store the form data parameters.
-        
         
         """
         result = self.chatgpt.send_message(prompt, self.conversation_id)
         return result
 
-    def generate_request_instance_sequence_by_openapi_document(
+    def _generate_request_instance_sequence_by_openapi_document(
         self, method_list: List[Method]
     ):
         """
@@ -241,3 +257,72 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
          """
         result = self.chatgpt.send_message(prompt, self.conversation_id)
         return result
+
+    def generate_request_instance_by_openapi_document(self, method_list: List[Method]):
+        if self.conversation_id is None:
+            return
+        if self.has_pending_method_instance_generation:
+            return
+        chunk_method_list = []
+        for method in method_list:
+            chunk_method_list.append(method)
+            self.has_pending_method_instance_generation = True
+            if len(chunk_method_list) >= self.generate_instance_chunk_size:
+                command = GeneratePlainInstanceFromMethodDocCommand()
+                command.method_list = chunk_method_list
+                self.command_queue.put(command)
+                chunk_method_list = []
+
+        if len(chunk_method_list) > 0:
+            command = GeneratePlainInstanceFromMethodDocCommand()
+            command.method_list = chunk_method_list
+            self.command_queue.put(command)
+
+    def command_response_handler(self, response: CommandResponse):
+        handler = self.command_response_handler_map.get(response.command.command)
+        handler(response)
+
+    def _parse_request_instance_from_chatgpt_result(self, result: str) -> List[str]:
+        instance_list = []
+        for line in result.splitlines():
+            if "REQUEST_INSTANCE:" in line:
+                instance = line.split("REQUEST_INSTANCE:")[1]
+                instance_list.append(instance)
+        return instance_list
+
+    def _handle_generate_plain_instance_response(self, response: CommandResponse):
+        instance_list = response.result
+        self.has_pending_method_instance_generation = False
+        for instance_list_item, method in zip(
+            instance_list, response.command.method_list
+        ):
+            instance_list_item = instance_list_item.strip()
+            pattern = r",open\((.*?)\),"
+            instance_list_item = re.sub(pattern, ",233,", instance_list_item)
+            pattern = r", open\((.*?)\),"
+            instance_list_item = re.sub(pattern, ",233,", instance_list_item)
+            value_dict: dict = ast.literal_eval(instance_list_item)
+            url = method.method_path
+            path_variable_dict = value_dict.get("path", {})
+            for key, value in path_variable_dict.items():
+                url = url.replace("{" + key + "}", str(value))
+            request = Request()
+            request.method = method
+            request.url = url
+            request.params = value_dict.get("params", None)
+            request.form_data = value_dict.get("form_data", None)
+            request.data = value_dict.get("json_data", None)
+            request.headers = value_dict.get("headers", None)
+            files = value_dict.get("files", {})
+            for key, value in files.items():
+                list_value = list(value)
+                list_value[0] = "smallest.jpg"
+                list_value[1] = open("./assets/smallest.jpg", "rb")
+                files[key] = tuple(list_value)
+            request.files = files
+            self.fuzzer.pending_request_list.append(request)
+
+    def process_chatgpt_result(self):
+        while not self.command_response_queue.empty():
+            response = self.command_response_queue.get()
+            self.command_response_handler(response)

@@ -1,7 +1,7 @@
 import datetime
 import pathlib
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 
 import loguru
 
@@ -11,6 +11,7 @@ from analysis.base_analysis import Analysis
 from analysis.statistic_analysis import StatisticAnalysis
 from constant.data_generation_config import DataGenerationConfig
 from constant.fuzzer_config import FuzzerConfig
+from model.method import Method
 from model.operation_dependency_graph import OperationDependencyGraph
 from model.request_response import Request, Response
 from model.sequence import Sequence
@@ -30,18 +31,22 @@ class Fuzzer:
         self.graph: OperationDependencyGraph = graph
         self.config: FuzzerConfig = config
         self.time_budget: float = config.time_budget
-        self.chatgpt_agent: ChatGPTAgent = ChatGPTAgent()
+        self.chatgpt_agent: ChatGPTAgent = ChatGPTAgent(self)
         self.sequence_list: List[Sequence] = []
         self.sequence_converter: SequenceConverter = SequenceConverter(self)
         self.data_generation_config: DataGenerationConfig = DataGenerationConfig()
         self.analysis_list: List[Analysis] = []
+        self.success_method_set: Set[Method] = set()
+        self.failed_method_set: Set[Method] = set()
+        self.never_success_method_set: Set[Method] = set()
+        self.pending_request_list: List[Request] = []
 
     def setup(self):
         logger.info("Fuzzer setup")
         self._init_analysis()
         self.chatgpt_agent.init_chatgpt()
         self.chatgpt_agent.generate_sequence_from_method_list(self.graph.method_list)
-        self.sequence_list = self.graph._generate_single_method_sequence()
+        self.sequence_list = self.graph.generate_sequence()
         logger.info(f"generated {len(self.sequence_list)} sequences")
 
     def _init_analysis(self):
@@ -77,5 +82,18 @@ class Fuzzer:
             for sequence in self.sequence_list:
                 converter.convert(sequence)
 
+            # process chatgpt result
+            self.chatgpt_agent.process_chatgpt_result()
+
+            # execute pending request
+            for request in self.pending_request_list:
+                converter.request_chatgpt_single_instance(request)
+            self.pending_request_list.clear()
+
             # handlers for each iteration
             self._on_iteration_end()
+
+            # handle the case that all methods are never success
+            self.chatgpt_agent.generate_request_instance_by_openapi_document(
+                list(self.never_success_method_set)
+            )

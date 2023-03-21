@@ -8,13 +8,16 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import rstr
 
-from algo.runtime_dictionary import RuntimeDictionary, RuntimeValueResult
+from algo.rl_algorithm import rl_algorithm
+from algo.runtime_dictionary import ReferenceValueResult, RuntimeDictionary
 from constant.data_generation_config import DataGenerationConfig
 from constant.parameter import ParameterType
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute, ParameterType
-from model.parameter_dependency import (InContextParameterDependency,
-                                        ParameterDependency)
+from model.parameter_dependency import (InContextAttributeDependency,
+                                        InContextParameterDependency,
+                                        ParameterDependency,
+                                        ReferenceValueResult)
 from model.request_response import Response
 from model.sequence import Sequence
 
@@ -43,6 +46,9 @@ class DataGenerator:
         self.last_response: Response = last_response
         self.response_list: List[Response] = response_list
         self.sequence: Sequence = sequence
+        self.valid_dependency_map: Dict[
+            ParameterAttribute, List[InContextAttributeDependency]
+        ] = {}
         self.value_generator: Dict[ParameterType, Any] = {
             ParameterType.STRING: self.generate_string_value,
             ParameterType.INTEGER: self.generate_integer_value,
@@ -53,10 +59,15 @@ class DataGenerator:
             ParameterType.FILE: self.generate_file_value,
         }
         self.config: DataGenerationConfig = self.fuzzer.data_generation_config
-        self.runtime_value_result_list: List[RuntimeValueResult] = []
+        self.reference_value_result_list: List[ReferenceValueResult] = []
 
     def _should_skip(self, parameter_attribute: ParameterAttribute) -> bool:
         if parameter_attribute.required:
+            return False
+        if (
+            parameter_attribute in self.valid_dependency_map
+            and np.random.random() > self.config.dependency_skip_probability
+        ):
             return False
         if (
             parameter_attribute.parent_parameter_attribute is None
@@ -67,10 +78,45 @@ class DataGenerator:
             return False
         return True
 
+    def _should_use_dependency(self, parameter_attribute: ParameterAttribute) -> bool:
+        if (
+            parameter_attribute in self.valid_dependency_map
+            and np.random.random() > self.config.dependency_skip_probability
+        ):
+            return True
+        return False
+
+    def _fetch_dependency_value(
+        self, parameter_attribute: ParameterAttribute
+    ) -> InContextAttributeDependency:
+        in_context_dependency_list = self.valid_dependency_map[parameter_attribute]
+        dependency_list = [
+            dependency.parameter_dependency for dependency in in_context_dependency_list
+        ]
+        index = rl_algorithm(dependency_list)
+        dependency: InContextAttributeDependency = in_context_dependency_list[index]
+        response_attribute: ParameterAttribute = self.response_list[
+            dependency.producer_index
+        ].response_body_value_map[
+            dependency.parameter_dependency.producer_parameter.attribute_path
+        ]
+        parameter_value_list = response_attribute.parameter_value_list
+        value = parameter_value_list[np.random.randint(0, len(parameter_value_list))]
+        refer_value_result = ReferenceValueResult()
+        refer_value_result.value = value
+        refer_value_result.dependency = dependency.parameter_dependency
+        refer_value_result.should_use = True
+        refer_value_result.attribute = parameter_attribute
+        self.reference_value_result_list.append(refer_value_result)
+        return value
+
     def generate_string_value(self, parameter_attribute: ParameterAttribute) -> str:
+        # use dependency
+        if self._should_use_dependency(parameter_attribute):
+            return self._fetch_dependency_value(parameter_attribute)
         # concrete implementation
         min_len = 0
-        max_len = 100
+        max_len = 32
         if (
             parameter_attribute.schema_info.has_enum
             and np.random.random() > self.config.violation_enum_probability
@@ -83,7 +129,7 @@ class DataGenerator:
             self, parameter_attribute
         )
         if runtime_value_result.should_use:
-            self.runtime_value_result_list.append(runtime_value_result)
+            self.reference_value_result_list.append(runtime_value_result)
             return runtime_value_result.value
 
         if (
@@ -135,6 +181,10 @@ class DataGenerator:
 
     # write signature for all value generators
     def generate_integer_value(self, parameter_attribute: ParameterAttribute) -> int:
+        # use dependency
+        if self._should_use_dependency(parameter_attribute):
+            return self._fetch_dependency_value(parameter_attribute)
+
         # concrete implementation
         if (
             parameter_attribute.schema_info.has_enum
@@ -148,7 +198,7 @@ class DataGenerator:
             self, parameter_attribute
         )
         if runtime_value_result.should_use:
-            self.runtime_value_result_list.append(runtime_value_result)
+            self.reference_value_result_list.append(runtime_value_result)
             return runtime_value_result.value
         # bypass for enum
         if np.random.random() < self.config.enum_number_value_probability:
@@ -194,36 +244,60 @@ class DataGenerator:
         return float(self.generate_integer_value(parameter_attribute))
 
     def generate_boolean_value(self, parameter_attribute: ParameterAttribute) -> bool:
+        # use dependency
+        if self._should_use_dependency(parameter_attribute):
+            value = self._fetch_dependency_value(parameter_attribute)
+            if value == True:
+                return "true"
+            elif value == False:
+                return "false"
+            else:
+                return value
         res = np.random.choice(["true", "false"])
         return res
 
     def generate_array_value(
         self, parameter_attribute: ParameterAttribute
     ) -> List[Any]:
+        # use dependency
+        if self._should_use_dependency(parameter_attribute):
+            return self._fetch_dependency_value(parameter_attribute)
+
         # use runtime dictionary
-        # runtime_value_result = self.runtime_dictionary.fetch_value(self, parameter_attribute)
-        # if runtime_value_result.should_use:
-        #     self.runtime_value_result_list.append(runtime_value_result)
-        #     return runtime_value_result.value
+        runtime_value_result = self.runtime_dictionary.fetch_value(
+            self, parameter_attribute
+        )
+        if runtime_value_result.should_use:
+            self.reference_value_result_list.append(runtime_value_result)
+            return runtime_value_result.value
 
         result = []
 
-        for child_parameter in parameter_attribute.child_parameter_attribute_list:
-            generated_value = self.generate_value(child_parameter)
-            if generated_value == self.SKIP_SYMBOL:
-                continue
-            result.append(generated_value)
+        item_num = np.random.randint(0, 3)
+
+        for _ in range(item_num):
+            for child_parameter in parameter_attribute.child_parameter_attribute_list:
+                generated_value = self.generate_value(child_parameter)
+                if generated_value == self.SKIP_SYMBOL:
+                    continue
+                result.append(generated_value)
 
         return result
 
     def generate_object_value(
         self, parameter_attribute: ParameterAttribute
     ) -> Dict[str, Any]:
+        # use dependency
+        if self._should_use_dependency(parameter_attribute):
+            return self._fetch_dependency_value(parameter_attribute)
+
         # use runtime dictionary
-        # runtime_value_result = self.runtime_dictionary.fetch_value(self, parameter_attribute)
-        # if runtime_value_result.should_use:
-        #     self.runtime_value_result_list.append(runtime_value_result)
-        #     return runtime_value_result.value
+        runtime_value_result = self.runtime_dictionary.fetch_value(
+            self, parameter_attribute
+        )
+        if runtime_value_result.should_use:
+            self.reference_value_result_list.append(runtime_value_result)
+            return runtime_value_result.value
 
         result = {}
 
@@ -236,11 +310,19 @@ class DataGenerator:
         return result
 
     def generate_file_value(self, parameter_attribute: ParameterAttribute) -> Any:
+        # use dependency
+        if self._should_use_dependency(parameter_attribute):
+            return self._fetch_dependency_value(parameter_attribute)
+
         img_path = os.path.join("./assets/smallest.jpg")
         file = open(img_path, "rb")
         return file
 
     def generate_value(self, parameter_attribute: ParameterAttribute) -> Any:
+        # use dependency
+        if self._should_use_dependency(parameter_attribute):
+            return self._fetch_dependency_value(parameter_attribute)
+
         if self._should_skip(parameter_attribute):
             return self.SKIP_SYMBOL
         parameter_type: ParameterType = parameter_attribute.parameter_type

@@ -31,6 +31,7 @@ class OperationDependencyGraph:
         self.method_list: List[Method] = []
         self.edge_list: List[Edge] = []
         self.rule_list: List[Rule] = [SubStringRule]
+        self.sequence_length: int = 2
         self.producer_consumer_map: Dict[Method, List[Method]] = {}
         self.consumer_producer_map: Dict[Method, List[Method]] = {}
         self.producer_consumer_edge_map: Dict[Method, List[Edge]] = {}
@@ -115,6 +116,7 @@ class OperationDependencyGraph:
         sequence_list = []
         for producer in self.producer_consumer_map:
             sequence_list += self._generate_sequence(producer, Sequence())
+        sequence_list += self._generate_single_method_sequence()
         return sequence_list
 
     def generate_sequence_by_chatgpt(self, chatgpt: ChatGPTAgent) -> List[Sequence]:
@@ -189,6 +191,10 @@ class OperationDependencyGraph:
         sequence_list = []
 
         sequence.add_method(producer)
+
+        # check the length of sequence
+        if len(sequence.method_sequence) >= self.sequence_length:
+            return [sequence.copy()]
 
         # it is a leaf node
         if producer not in self.producer_consumer_map:

@@ -84,8 +84,9 @@ class ParameterAttribute:
         self.global_required: bool = False
 
         # if parameter is None, this is a runtime parameter
+        self.parameter_value_list = []
+
         if self.parameter is None:
-            self.parameter_value_list = []
             return
 
         # check if the parameter attribute is a schema

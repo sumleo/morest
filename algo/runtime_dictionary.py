@@ -2,26 +2,18 @@ import collections
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import loguru
+import numpy as np
 
+from algo.rl_algorithm import rl_algorithm
 from constant.data_generation_config import DataGenerationConfig
 from constant.parameter import ParameterLocation, ParameterType
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute
-from model.parameter_dependency import ParameterDependency
+from model.parameter_dependency import (ParameterDependency,
+                                        ReferenceValueResult)
 from model.request_response import Request, Response
 
 logger = loguru.logger
-import dataclasses
-
-import numpy as np
-
-
-@dataclasses.dataclass
-class RuntimeValueResult:
-    should_use: bool = False
-    dependency: Optional[ParameterDependency] = None
-    value: Optional[Any] = None
-    attribute: Optional[ParameterAttribute] = None
 
 
 class RuntimeDictionary:
@@ -47,26 +39,20 @@ class RuntimeDictionary:
         self.consumer_method_parameter_to_dependency_map: Dict[
             Tuple[Method, ParameterAttribute], Set[ParameterDependency]
         ] = {}
-        self.c: int = 5  # Exploration parameter
 
     def _choose_dependency(
         self, dependency_list: List[ParameterDependency]
     ) -> ParameterDependency:
-        if len(dependency_list) == 1:
-            return dependency_list[0]
-        Q = np.array([dependency.Q for dependency in dependency_list])
-        N = np.array([dependency.N for dependency in dependency_list])
-        ucb_scores = Q + self.c * np.sqrt(np.log(sum(N)) / (1 + N))
-        return dependency_list[np.argmax(ucb_scores)]
+        index = rl_algorithm(dependency_list)
+        return dependency_list[index]
 
     def fetch_value(
         self,
         data_generator: "DataGenerator",
         consumer_parameter_attribute: ParameterAttribute,
-    ) -> RuntimeValueResult:
-        result = RuntimeValueResult()
+    ) -> ReferenceValueResult:
+        result = ReferenceValueResult()
         parameter_tuple = (data_generator.method, consumer_parameter_attribute)
-        data_generator.config: DataGenerationConfig
 
         # skip runtime dictionary
         if data_generator.config.no_dictionary_value_probability > np.random.random():

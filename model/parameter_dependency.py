@@ -1,5 +1,5 @@
 import dataclasses
-from typing import List
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from model.method import Method
 from model.parameter import ParameterAttribute
@@ -12,8 +12,8 @@ class ParameterDependency:
     consumer: Method = None
     producer_parameter: ParameterAttribute = None
     consumer_parameter: ParameterAttribute = None
-    N: float = 0  # Estimated values of each arm
-    Q: float = 5  # Number of times each arm has been selected
+    N: float = 0  # Number of times each arm has been selected
+    Q: float = 5  # Estimated values of each arm
 
     @property
     def signature(self):
@@ -38,6 +38,21 @@ class ParameterDependency:
         # Update the estimated value of the chosen arm
         self.N += 1
         self.Q += (reward - self.Q) / self.N
+
+
+@dataclasses.dataclass
+class ReferenceValueResult:
+    should_use: bool = False
+    dependency: Optional[ParameterDependency] = None
+    value: Optional[Any] = None
+    attribute: Optional[ParameterAttribute] = None
+
+
+@dataclasses.dataclass
+class InContextAttributeDependency:
+    producer_index: int = None
+    consumer_index: int = None
+    parameter_dependency: ParameterDependency = None
 
 
 @dataclasses.dataclass

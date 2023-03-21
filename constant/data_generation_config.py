@@ -44,3 +44,6 @@ class DataGenerationConfig:
 
     # probability to use random runtime dictionary value
     random_runtime_dictionary_value_probability: float = 0.5
+
+    # probability to skip dependency
+    dependency_skip_probability: float = 0.05

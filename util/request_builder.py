@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Tuple
 
-from constant.parameter import ParameterLocation
+from constant.parameter import ParameterLocation, ParameterType
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute
 from model.request_response import Request
@@ -24,7 +24,10 @@ def build_request(method: Method, parameters: List[Tuple[Parameter, Any]]) -> Re
             url = str(url)
             url = url.replace("{" + str(parameter.name) + "}", str(val))
         elif parameter_location == ParameterLocation.FORM_DATA:
-            form_data[parameter.name] = val
+            if parameter.parameter.parameter_type == ParameterType.FILE:
+                files[parameter.name] = ("test.jpg", val)
+                continue
+            params[parameter.name] = val
         elif parameter_location == ParameterLocation.BODY:
             data = val
         else:
