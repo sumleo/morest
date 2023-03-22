@@ -28,6 +28,7 @@ class Response:
     status_code: int = None
     method: Method = None
     request: Request = None
+    text: str = None
     response_header_value_map: Dict[str, ParameterAttribute] = dataclasses.field(
         default_factory=dict
     )

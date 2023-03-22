@@ -115,7 +115,7 @@ class ChatGPT:
         r = requests.post(url, headers=self.headers, json=data, proxies=self.proxies)
         if r.status_code != 200:
             # 发送消息阻塞时等待20秒从新发送
-            logger.warning(r.json()["detail"])
+            logger.warning(f"chatgpt failed: {r.text}")
             time.sleep(self.config.error_wait_time)
             return self.send_message(message, conversation_id)
         response_result = json.loads(r.text.split("data: ")[-2])

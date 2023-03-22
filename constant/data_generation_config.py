@@ -47,3 +47,6 @@ class DataGenerationConfig:
 
     # probability to skip dependency
     dependency_skip_probability: float = 0.05
+
+    # probability to skip example
+    example_skip_probability: float = 0.5

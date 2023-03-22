@@ -57,7 +57,6 @@ class SequenceConverter:
                 # invalid response
                 if 300 <= producer_response.status_code:
                     continue
-                logger.debug(f"dependency: {dependency}")
                 producer_attribute: ParameterAttribute = (
                     dependency.parameter_dependency.producer_parameter
                 )
@@ -121,6 +120,7 @@ class SequenceConverter:
         except Exception as e:  # probably an encoding error
             raise e
         else:
+            response.text = raw_response.text
             if method in self.fuzzer.never_success_method_set:
                 a = 1
             try:
@@ -131,7 +131,7 @@ class SequenceConverter:
 
     def convert(self, sequence: Sequence) -> Sequence:
         # renew session
-        # self._new_session()
+        self._new_session()
 
         last_response: Response = None
         response_list: List[Response] = []
@@ -177,5 +177,13 @@ class SequenceConverter:
         return result
 
     def request_chatgpt_single_instance(self, request: Request):
-        response = self._do_request(request.method, request)
+        try:
+            response = self._do_request(request.method, request)
+        except Exception as e:
+            logger.error(f"Error when requesting ChatGPT instance: {e}, {request}")
+            return
+
+        if 200 <= response.status_code < 300:
+            logger.info(f"ChatGPT instance request success: {request.method.signature}")
+
         self.fuzzer._on_request_response(None, request, response)

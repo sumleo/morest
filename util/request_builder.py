@@ -27,7 +27,7 @@ def build_request(method: Method, parameters: List[Tuple[Parameter, Any]]) -> Re
             if parameter.parameter.parameter_type == ParameterType.FILE:
                 files[parameter.name] = ("test.jpg", val)
                 continue
-            params[parameter.name] = val
+            form_data[parameter.name] = val
         elif parameter_location == ParameterLocation.BODY:
             data = val
         else:

@@ -56,6 +56,11 @@ class OperationDependencyGraph:
                 if producer == consumer:
                     continue
                 for rule in self.rule_list:
+                    if (
+                        producer.operation_id == "addPet"
+                        and consumer.operation_id == "getPetById"
+                    ):
+                        a = 1
                     if rule.has_parameter_dependency(producer, consumer):
                         parameter_dependency_list = rule.build_parameter_dependency(
                             producer, consumer
@@ -116,47 +121,43 @@ class OperationDependencyGraph:
         sequence_list = []
         for producer in self.producer_consumer_map:
             sequence_list += self._generate_sequence(producer, Sequence())
-        sequence_list += self._generate_single_method_sequence()
         return sequence_list
 
-    def generate_sequence_by_chatgpt(self, chatgpt: ChatGPTAgent) -> List[Sequence]:
+    def generate_sequence_by_chatgpt(
+        self, test_sequence_list: List[List[str]]
+    ) -> List[Sequence]:
         """
         Generate sequence by chatgpt
-        :param chatgpt:
+        :param test_sequence_list: List[List[str]]
         :return: List[Sequence]
         """
         sequence_list = []
-        raw_response = chatgpt.generate_sequence_from_method_list(self.method_list)
-        test_sequence_list = chatgpt.parse_raw_sequence(raw_response)
         for test_sequence_line in test_sequence_list:
             sequence = Sequence()
-            producer = None
             for test_sequence in test_sequence_line:
                 consumer = self._find_method_by_name(test_sequence)
                 if consumer is None:
                     continue
                 sequence.add_method(consumer)
                 # check has dependency
-                if (
-                    producer is not None
-                    and (producer, consumer) in self.producer_consumer_to_edge_map
+                for producer_index, producer in enumerate(
+                    sequence.method_sequence[:-1]
                 ):
-                    dependency = InContextParameterDependency()
-                    dependency.producer = producer
-                    dependency.consumer = consumer
-                    dependency.producer_index = sequence.method_sequence.index(producer)
-                    dependency.consumer_index = sequence.method_sequence.index(consumer)
-                    for parameter_dependency in self.producer_consumer_to_edge_map[
-                        (producer, consumer)
-                    ].parameter_dependency_list:
-                        dependency.add_parameter_dependency(parameter_dependency)
-                    sequence.add_parameter_dependency(dependency)
-                producer = consumer
+                    if (producer, consumer) in self.producer_consumer_to_edge_map:
+                        dependency = InContextParameterDependency()
+                        dependency.producer = producer
+                        dependency.consumer = consumer
+                        dependency.producer_index = producer_index
+                        dependency.consumer_index = len(sequence.method_sequence) - 1
+                        for parameter_dependency in self.producer_consumer_to_edge_map[
+                            (producer, consumer)
+                        ].parameter_dependency_list:
+                            dependency.add_parameter_dependency(parameter_dependency)
+                        sequence.add_parameter_dependency(dependency)
             if len(sequence.method_sequence) == 0:
                 continue
+            sequence.is_from_chatgpt = True
             sequence_list.append(sequence)
-
-        sequence_list += self._generate_single_method_sequence()
 
         return sequence_list
 
@@ -174,7 +175,7 @@ class OperationDependencyGraph:
 
     def _find_method_by_name(self, method_name: str) -> Method:
         for method in self.method_list:
-            if method.operation_id in method_name:
+            if method.operation_id == method_name:
                 return method
         return None
 

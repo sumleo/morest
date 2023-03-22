@@ -107,6 +107,8 @@ class ParameterAttribute:
 
         # update schema info
         self.schema_info = ParameterAttributeSchemaInfo()
+        if parameter_attribute_raw_body.__contains__("schema"):
+            parameter_attribute_raw_body = parameter_attribute_raw_body["schema"]
         self.schema_info.raw_schema = parameter_attribute_raw_body
         self.schema_info.enum = parameter_attribute_raw_body.get("enum", None)
         self.schema_info.example = parameter_attribute_raw_body.get("example", None)

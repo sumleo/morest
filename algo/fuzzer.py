@@ -40,13 +40,24 @@ class Fuzzer:
         self.failed_method_set: Set[Method] = set()
         self.never_success_method_set: Set[Method] = set()
         self.pending_request_list: List[Request] = []
+        self.operation_id_to_method_map: Dict[str, Method] = {}
+        self.pending_sequence_list: List[Sequence] = []
+        self.single_method_sequence_list: List[Sequence] = []
 
     def setup(self):
         logger.info("Fuzzer setup")
         self._init_analysis()
         self.chatgpt_agent.init_chatgpt()
         self.chatgpt_agent.generate_sequence_from_method_list(self.graph.method_list)
-        self.sequence_list = self.graph.generate_sequence()
+        self.single_method_sequence_list = self.graph._generate_single_method_sequence()
+        self.sequence_list = (
+            self.graph.generate_sequence() + self.single_method_sequence_list
+        )
+        self.pending_sequence_list = self.sequence_list.copy()
+
+        for method in self.graph.method_list:
+            self.operation_id_to_method_map[method.operation_id] = method
+
         logger.info(f"generated {len(self.sequence_list)} sequences")
 
     def _init_analysis(self):
@@ -70,7 +81,7 @@ class Fuzzer:
 
         # convert sequence to request
         for _ in range(self.config.warm_up_times):
-            for sequence in self.sequence_list:
+            for sequence in self.single_method_sequence_list:
                 self.sequence_converter.convert(sequence)
             self._on_iteration_end()
 
@@ -96,4 +107,11 @@ class Fuzzer:
             # handle the case that all methods are never success
             self.chatgpt_agent.generate_request_instance_by_openapi_document(
                 list(self.never_success_method_set)
+            )
+
+            # update sequence list
+            if len(self.pending_sequence_list) == 0:
+                continue
+            self.sequence_list = (
+                self.pending_sequence_list + self.single_method_sequence_list
             )

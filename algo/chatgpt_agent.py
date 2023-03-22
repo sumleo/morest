@@ -50,6 +50,17 @@ class GenerateSequenceFromMethodListCommand(ChatGPTCommand):
 
 
 @dataclasses.dataclass
+class GenerateSequenceFromMethodListCommand(ChatGPTCommand):
+    command: ChatGPTCommandType = ChatGPTCommandType.GENERATE_SEQUENCE
+    success_method_list: List[Method] = dataclasses.field(default_factory=list)
+    failed_method_list: List[Method] = dataclasses.field(default_factory=list)
+
+    def execute(self, agent: "ChatGPTAgent"):
+        raw_sequence = agent._generate_sequence_from_method_list(self.method_list)
+        return agent.parse_raw_sequence(raw_sequence)
+
+
+@dataclasses.dataclass
 class GeneratePlainInstanceFromMethodDocCommand(ChatGPTCommand):
     command: ChatGPTCommandType = ChatGPTCommandType.GENERATE_PLAIN_INSTANCE
     method_list: List[Method] = dataclasses.field(default_factory=list)
@@ -78,49 +89,71 @@ As part of the testing process, you should review the OpenAPI/Swagger documents 
 Overall, your goal is to ensure that the RESTful API is thoroughly tested and that the OpenAPI/Swagger documents are accurate and up-to-date. For this message, you just need to reply `OK` to continue.
         """
         self.sequence_generation_prompt: str = """
-        You are given a list of RESTful APIs in the format of OpenAPI/Swagger. Each API is defined as `api_name: method_name: path (api_summary) (api_description)`. For instance, `API1: post: /api/v1/users (Create a user) (Create a user with the given user name)`. An empty string `("")` is used if the value is empty. Your task is to write test cases for these APIs.
-        Your test cases should call multiple RESTful APIs in the correct order.
-        Please provide at least 20 test cases. Do not include any explanation and descriptions in your test cases. You just need to provide the test cases.  Each test case should begin with `TEST_CASE:`, following the format of `TEST_CASE: api_name -> api_name -> api_name -> ... -> api_name`, such as `TEST_CASE: API1 -> API2 -> API3 -> API4 -> API5`.
-        The list of RESTful APIs is as follows:
-        
+You have been provided with a set of RESTful APIs in the OpenAPI/Swagger format. Each API is represented by the following format: api_name: method_name: path (api_summary) (api_description). For example, an API named create_user with a POST method and the path /api/v1/users, along with a summary of "Create a user" and a description of "Create a user with the given user name" would be described as create_user: POST: /api/v1/users (Create a user) (Create a user with the given user name).
+
+Your task is to generate a series of valid test cases for these APIs, where each test case should call multiple APIs but not exceed 5 APIs. You must guarantee that the test cases are logically correct and do not violate any constraints or requirements specified in the API documentation.
+
+To begin, please produce at least 20 test cases using the following format:
+
+```
+TEST_CASE: API1 -> API2 -> API3 -> ... -> API5
+```
+
+The format should be followed strictly.
+
+As you generate your test cases, consider the various HTTP methods that are supported by the APIs, including GET, POST, PUT, and DELETE. Additionally, consider any possible status codes that can be returned by each API, as well as any expected error messages. Finally, be sure to validate any input parameters, such as query parameters, headers, and request bodies, to ensure that the APIs are behaving as expected.
+
+Please note that your test cases must be logically sound, complete and free of errors, as they will be used to test the functionality of the RESTful APIs.
+
+You must not include any conclusion, explaination and purpose.
+
+You must only output testcases.
+
+The testcases must follow the format above.
+
+The APIs are listed below:
+
         """
 
         self.batch_input_prompt: str = """
         Due to token limit, you just need to reply `OK` to continue until I ask you questions.
         """
 
-        self.generate_instance_chunk_size = 5
+        self.generate_instance_chunk_size = 8
 
         self.plain_instance_generation_prompt: str = """
-        You are given several RESTful API in the format of OpenAPI/Swagger documentation. 
-        Please provide only one request instance for each API in separate json schema sequentially, following the format below to be used as arguments of Python's libarary. `requests`:
-        
-        ```json
-        {
-            "path":<path>,
-            "params": <params>,
-            "form_data":<form_data>,
-            "json_data":<data>,
-            "headers":<headers>,
-            "files":<files>,
-        }
-        ```
-        
-        path - (optional)  path variables of the request
+You have been provided with the OpenAPI/Swagger documentation for several RESTful APIs. Your task is to create a request instance for each API, following the format below, which will be used as arguments for Python's requests library:
 
-        params – (optional) Dictionary, list of tuples or bytes to send in the query string for the Request.
-        
-        form_data – (optional) Dictionary, list of tuples, bytes, or file-like object to send in the body of the Request. It's in the body as form-data.
-        
-        json_data – (optional) A JSON serializable Python object to send in the body of the Request.
-        
-        headers – (optional) Dictionary of HTTP Headers to send with the Request=-=
-        
-        files – (optional) Dictionary of 'name': file-like-objects (or {'name': file-tuple}) for multipart encoding upload. file-tuple can be a 2-tuple ('filename', fileobj), 3-tuple ('filename', fileobj, 'content_type') or a 4-tuple ('filename', fileobj, 'content_type', custom_headers), where 'content-type' is a string defining the content type of the given file and custom_headers a dict-like object containing additional headers to add for the file.
-        
-        Do not include any explanation and descriptions in your request instances. You just need to provide the request instances. Each request instance should begin with `REQUEST_INSTANCE:` in one line, following the format of `REQUEST_INSTANCE: <request_instance>`, such as `REQUEST_INSTANCE: {"path":{"petId":1}}`.
-        
-        The RESTful API documentation is as follows:
+```json
+{
+    "path": <path>,
+    "params": <params>,
+    "form_data": <form_data>,
+    "json_data": <json_data>,
+    "headers": <headers>,
+    "files": <files>
+    "operation_id": <operation_id>
+}
+```
+
+Please create three request instances for each API in separate JSON schema, and list them sequentially. Each request instance should begin with REQUEST_INSTANCE: in one line, followed by the JSON schema, such as REQUEST_INSTANCE: {"path": {"petId": 1}}. Avoid potential parameter value conflict in these request instances. For instance, you can not create two users with same `user_id`.
+
+Note that the different fields in the request instance are optional and may not be present for all APIs. Here's a brief description of each field:
+
+path: (optional) Path variables of the request.
+params: (optional) Dictionary, list of tuples, or bytes to send in the query string for the request.
+form_data: (optional) Dictionary, list of tuples, bytes, or file-like object to send in the body of the request as form-data.
+json_data: (optional) A JSON serializable Python object to send in the body of the request.
+headers: (optional) Dictionary of HTTP headers to send with the request.
+files: (optional) Dictionary of 'name': file-like-objects (or {'name': file-tuple}) for multipart encoding upload. The file-like objects must use `"<file-placeholder>"` as the place holder.
+operation_id: (required) The operation ID in OpenAPI/Swagger documentation.
+
+Please do not include any explanation or descriptions in your request instances. 
+
+Your goal is to create a valid request instance for each API using the provided documentation.
+
+Each request instance must a valid json in one line.
+
 
         """
         self.command_queue: queue.Queue = queue.Queue()
@@ -131,9 +164,7 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
             ChatGPTCommandType.INITIALIZE: lambda response: logger.info(
                 "initialize chatgpt"
             ),
-            ChatGPTCommandType.GENERATE_SEQUENCE: lambda response: logger.info(
-                "generate sequence from method list"
-            ),
+            ChatGPTCommandType.GENERATE_SEQUENCE: self._handle_generate_sequence_response,
             ChatGPTCommandType.GENERATE_PLAIN_INSTANCE: self._handle_generate_plain_instance_response,
         }
         self.worker_thread: threading.Thread = threading.Thread(
@@ -205,11 +236,22 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
         result = self.chatgpt.send_message(prompt, self.conversation_id)
         return result
 
+    def _generate_sequence_for_failed_method_list(
+        self, success_method_list: List[Method], failed_method_list: List[Method]
+    ) -> str:
+        logger.info("generate sequence for failed method list")
+        prompt: str = self.sequence_generation_prompt
+        for method in method_list:
+            prompt += f"{method.operation_id}: {method.method_type.value}: {method.method_path} ({method.summary}) ({method.description})\n"
+        result = self.chatgpt.send_message(prompt, self.conversation_id)
+        return result
+
     def parse_raw_sequence(self, raw_text: str) -> List[List[str]]:
         test_case_list: List[List[str]] = []
         for line in raw_text.splitlines():
-            if "TEST_CASE: " in line:
+            if "TEST_CASE:" in line:
                 token_list = line.split("TEST_CASE: ")[1].split(" -> ")
+                token_list = [token.strip() for token in token_list]
                 test_case_list.append(token_list)
         return test_case_list
 
@@ -278,6 +320,14 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
             command.method_list = chunk_method_list
             self.command_queue.put(command)
 
+    def generate_test_case_and_instance_containing_never_success_method(
+        self, method_list: List[Method]
+    ):
+        if self.conversation_id is None:
+            return
+        if self.has_pending_method_instance_generation:
+            return
+
     def command_response_handler(self, response: CommandResponse):
         handler = self.command_response_handler_map.get(response.command.command)
         handler(response)
@@ -293,19 +343,20 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
     def _handle_generate_plain_instance_response(self, response: CommandResponse):
         instance_list = response.result
         self.has_pending_method_instance_generation = False
-        for instance_list_item, method in zip(
-            instance_list, response.command.method_list
-        ):
-            instance_list_item = instance_list_item.strip()
-            pattern = r",open\((.*?)\),"
-            instance_list_item = re.sub(pattern, ",233,", instance_list_item)
-            pattern = r", open\((.*?)\),"
-            instance_list_item = re.sub(pattern, ",233,", instance_list_item)
-            value_dict: dict = ast.literal_eval(instance_list_item)
+        for instance_list_item in instance_list:
+            try:
+                value_dict: dict = json.loads(instance_list_item)
+            except Exception as ex:
+                logger.error(f"Failed to parse instance: {instance_list_item}")
+                continue
+            self._update_file_like_object_from_instance(value_dict)
+            operation_id: str = value_dict.get("operation_id", None)
+            method: Method = self.fuzzer.operation_id_to_method_map[operation_id]
             url = method.method_path
             path_variable_dict = value_dict.get("path", {})
-            for key, value in path_variable_dict.items():
-                url = url.replace("{" + key + "}", str(value))
+            if isinstance(path_variable_dict, dict):
+                for key, value in path_variable_dict.items():
+                    url = url.replace("{" + key + "}", str(value))
             request = Request()
             request.method = method
             request.url = url
@@ -313,14 +364,28 @@ Overall, your goal is to ensure that the RESTful API is thoroughly tested and th
             request.form_data = value_dict.get("form_data", None)
             request.data = value_dict.get("json_data", None)
             request.headers = value_dict.get("headers", None)
-            files = value_dict.get("files", {})
-            for key, value in files.items():
-                list_value = list(value)
-                list_value[0] = "smallest.jpg"
-                list_value[1] = open("./assets/smallest.jpg", "rb")
-                files[key] = tuple(list_value)
+            files = value_dict.get("files", None)
             request.files = files
             self.fuzzer.pending_request_list.append(request)
+
+    def _update_file_like_object_from_instance(self, instance: Any):
+        placeholder = "<file-placeholder>"
+        if isinstance(instance, dict):
+            for key, value in instance.items():
+                if value == placeholder:
+                    instance[key] = open("./assets/smallest.jpg", "rb")
+                else:
+                    self._update_file_like_object_from_instance(value)
+        elif isinstance(instance, list):
+            for item in instance:
+                self._update_file_like_object_from_instance(item)
+
+    def _handle_generate_sequence_response(self, response: CommandResponse):
+        raw_sequence_list = response.result
+        sequence_list = self.fuzzer.graph.generate_sequence_by_chatgpt(
+            raw_sequence_list
+        )
+        self.fuzzer.pending_sequence_list = sequence_list
 
     def process_chatgpt_result(self):
         while not self.command_response_queue.empty():

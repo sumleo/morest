@@ -86,6 +86,14 @@ class DataGenerator:
             return True
         return False
 
+    def _should_use_example(self, parameter_attribute: ParameterAttribute) -> bool:
+        if (
+            parameter_attribute.schema_info.has_example
+            and np.random.random() > self.config.example_skip_probability
+        ):
+            return True
+        return False
+
     def _fetch_dependency_value(
         self, parameter_attribute: ParameterAttribute
     ) -> InContextAttributeDependency:
@@ -111,6 +119,10 @@ class DataGenerator:
         return value
 
     def generate_string_value(self, parameter_attribute: ParameterAttribute) -> str:
+        # use example
+        if self._should_use_example(parameter_attribute):
+            return parameter_attribute.schema_info.example
+
         # use dependency
         if self._should_use_dependency(parameter_attribute):
             return self._fetch_dependency_value(parameter_attribute)
@@ -181,6 +193,10 @@ class DataGenerator:
 
     # write signature for all value generators
     def generate_integer_value(self, parameter_attribute: ParameterAttribute) -> int:
+        # use example
+        if self._should_use_example(parameter_attribute):
+            return parameter_attribute.schema_info.example
+
         # use dependency
         if self._should_use_dependency(parameter_attribute):
             return self._fetch_dependency_value(parameter_attribute)
@@ -244,6 +260,10 @@ class DataGenerator:
         return float(self.generate_integer_value(parameter_attribute))
 
     def generate_boolean_value(self, parameter_attribute: ParameterAttribute) -> bool:
+        # use example
+        if self._should_use_example(parameter_attribute):
+            return parameter_attribute.schema_info.example
+
         # use dependency
         if self._should_use_dependency(parameter_attribute):
             value = self._fetch_dependency_value(parameter_attribute)
@@ -259,6 +279,10 @@ class DataGenerator:
     def generate_array_value(
         self, parameter_attribute: ParameterAttribute
     ) -> List[Any]:
+        # use example
+        if self._should_use_example(parameter_attribute):
+            return parameter_attribute.schema_info.example
+
         # use dependency
         if self._should_use_dependency(parameter_attribute):
             return self._fetch_dependency_value(parameter_attribute)
@@ -287,6 +311,10 @@ class DataGenerator:
     def generate_object_value(
         self, parameter_attribute: ParameterAttribute
     ) -> Dict[str, Any]:
+        # use example
+        if self._should_use_example(parameter_attribute):
+            return parameter_attribute.schema_info.example
+
         # use dependency
         if self._should_use_dependency(parameter_attribute):
             return self._fetch_dependency_value(parameter_attribute)
@@ -310,6 +338,10 @@ class DataGenerator:
         return result
 
     def generate_file_value(self, parameter_attribute: ParameterAttribute) -> Any:
+        # use example
+        if self._should_use_example(parameter_attribute):
+            return parameter_attribute.schema_info.example
+
         # use dependency
         if self._should_use_dependency(parameter_attribute):
             return self._fetch_dependency_value(parameter_attribute)
@@ -319,6 +351,10 @@ class DataGenerator:
         return file
 
     def generate_value(self, parameter_attribute: ParameterAttribute) -> Any:
+        # use example
+        if self._should_use_example(parameter_attribute):
+            return parameter_attribute.schema_info.example
+
         # use dependency
         if self._should_use_dependency(parameter_attribute):
             return self._fetch_dependency_value(parameter_attribute)

@@ -14,6 +14,11 @@ class SubStringRule(Rule):
     def has_parameter_dependency(producer_method: Method, consumer_method: Method):
         for response in producer_method.response_parameter.values():
             for request in consumer_method.request_parameter.values():
+                if (
+                    producer_method.operation_id == "addPet"
+                    and consumer_method.operation_id == "updatePet"
+                ):
+                    a = 1
                 for producer_parameter_attribute in response.attribute_dict.values():
                     for consumer_parameter_attribute in request.attribute_dict.values():
                         if (
