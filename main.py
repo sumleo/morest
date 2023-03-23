@@ -11,9 +11,12 @@ from model.api import API
 from model.operation_dependency_graph import OperationDependencyGraph
 from util.api_document_warpper import wrap_methods_from_open_api_document
 
-yaml_path = "./pet-basic.json"
+yaml_path = "https://petstore3.swagger.io/api/v3/openapi.json"
 parser = argparse.ArgumentParser()
 parser.add_argument("--yaml_path", type=str, default=yaml_path)
+parser.add_argument("--time_budget", type=float, default=600)
+parser.add_argument("--warm_up_times", type=int, default=5)
+parser.add_argument("--url", type=str, default="http://localhost:8080/api/v3")
 args = parser.parse_args()
 
 logger = loguru.logger
@@ -43,8 +46,12 @@ def main():
     # build odg
     odg = OperationDependencyGraph(apis)
     odg.build()
+
     # init fuzzer
     config = FuzzerConfig()
+    config.time_budget = args.time_budget
+    config.warm_up_times = args.warm_up_times
+    config.url = args.url
     fuzzer = Fuzzer(odg, config)
 
     # setup fuzzer

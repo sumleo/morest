@@ -10,9 +10,11 @@ from algo.runtime_dictionary import ReferenceValueResult, RuntimeDictionary
 from constant.api import ResponseCustomizedStatusCode
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute
-from model.parameter_dependency import (InContextAttributeDependency,
-                                        InContextParameterDependency,
-                                        ParameterDependency)
+from model.parameter_dependency import (
+    InContextAttributeDependency,
+    InContextParameterDependency,
+    ParameterDependency,
+)
 from model.request_response import Request, Response
 from model.sequence import Sequence
 from util.request_builder import build_request
@@ -104,16 +106,28 @@ class SequenceConverter:
 
         # do request
         try:
-            raw_response: requests.Response = request_actor(
-                url,
-                params=request.params,
-                data=request.form_data,
-                json=request.data,
-                headers=request.headers,
-                files=request.files,
-                allow_redirects=False,
-                timeout=30,
-            )
+            if isinstance(request.data, bytes):
+                request.headers["Content-Type"] = "application/octet-stream"
+                raw_response: requests.Response = request_actor(
+                    url,
+                    params=request.params,
+                    data=request.data,
+                    headers=request.headers,
+                    files=request.files,
+                    allow_redirects=False,
+                    timeout=30,
+                )
+            else:
+                raw_response: requests.Response = request_actor(
+                    url,
+                    params=request.params,
+                    data=request.form_data,
+                    json=request.data,
+                    headers=request.headers,
+                    files=request.files,
+                    allow_redirects=False,
+                    timeout=30,
+                )
         except requests.exceptions.ReadTimeout as err:
             logger.error(err)
             response.status_code = ResponseCustomizedStatusCode.TIMEOUT.value
@@ -148,6 +162,9 @@ class SequenceConverter:
 
             # do response
             response = self._do_request(method, request)
+
+            if method.operation_id == "getUserByName":
+                a = 1
 
             # add to runtime dictionary
             self.runtime_dictionary.add_response(response)

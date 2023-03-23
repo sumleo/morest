@@ -1,4 +1,5 @@
 import ast
+import copy
 import dataclasses
 import json
 import queue
@@ -46,17 +47,21 @@ class GenerateSequenceFromMethodListCommand(ChatGPTCommand):
 
     def execute(self, agent: "ChatGPTAgent"):
         raw_sequence = agent._generate_sequence_from_method_list(self.method_list)
+        if raw_sequence is None:
+            return None
         return agent.parse_raw_sequence(raw_sequence)
 
 
 @dataclasses.dataclass
-class GenerateSequenceFromMethodListCommand(ChatGPTCommand):
+class GenerateSequenceForFailedMethodListCommand(ChatGPTCommand):
     command: ChatGPTCommandType = ChatGPTCommandType.GENERATE_SEQUENCE
     success_method_list: List[Method] = dataclasses.field(default_factory=list)
     failed_method_list: List[Method] = dataclasses.field(default_factory=list)
 
     def execute(self, agent: "ChatGPTAgent"):
         raw_sequence = agent._generate_sequence_from_method_list(self.method_list)
+        if raw_sequence is None:
+            return None
         return agent.parse_raw_sequence(raw_sequence)
 
 
@@ -69,6 +74,8 @@ class GeneratePlainInstanceFromMethodDocCommand(ChatGPTCommand):
         raw_response = agent._generate_request_instance_by_openapi_document(
             self.method_list
         )
+        if raw_response is None:
+            return None
         return agent._parse_request_instance_from_chatgpt_result(raw_response)
 
 
@@ -136,7 +143,7 @@ You have been provided with the OpenAPI/Swagger documentation for several RESTfu
 }
 ```
 
-Please create three request instances for each API in separate JSON schema, and list them sequentially. Each request instance should begin with REQUEST_INSTANCE: in one line, followed by the JSON schema, such as REQUEST_INSTANCE: {"path": {"petId": 1}}. Avoid potential parameter value conflict in these request instances. For instance, you can not create two users with same `user_id`.
+Construct individual JSON schema request instances for each API, taking into account ChatGPT's output limitations. Each request instance should begin with REQUEST_INSTANCE: in one line, followed by the JSON schema, such as REQUEST_INSTANCE: {"path": {"petId": 1}}. Avoid potential parameter value conflict in these request instances. For instance, you can not create two users with same `user_id`.
 
 Note that the different fields in the request instance are optional and may not be present for all APIs. Here's a brief description of each field:
 
@@ -150,7 +157,7 @@ operation_id: (required) The operation ID in OpenAPI/Swagger documentation.
 
 Please do not include any explanation or descriptions in your request instances. 
 
-Your goal is to create a valid request instance for each API using the provided documentation.
+Please generate valid API request instances for the following APIs, using the provided API documentation as a reference. Analyze the descriptions, requirements, and constraints for each API to ensure the request instances adhere to the specified guidelines. 
 
 Each request instance must a valid json in one line.
 
@@ -264,7 +271,10 @@ Each request instance must a valid json in one line.
         """
         api_document = ""
         for method in method_list:
-            api_fragment = {method.method_path: method.method_raw_body}
+            raw_body = copy.deepcopy(method.method_raw_body)
+            if "responses" in raw_body:
+                del raw_body["responses"]
+            api_fragment = {method.method_path: raw_body}
             api_document += f"{api_fragment}\n"
         prompt: str = f"""
         {self.plain_instance_generation_prompt}
@@ -343,6 +353,9 @@ Each request instance must a valid json in one line.
     def _handle_generate_plain_instance_response(self, response: CommandResponse):
         instance_list = response.result
         self.has_pending_method_instance_generation = False
+        if instance_list is None:
+            logger.error("Failed to generate instance")
+            return
         for instance_list_item in instance_list:
             try:
                 value_dict: dict = json.loads(instance_list_item)
@@ -382,6 +395,9 @@ Each request instance must a valid json in one line.
 
     def _handle_generate_sequence_response(self, response: CommandResponse):
         raw_sequence_list = response.result
+        if raw_sequence_list is None:
+            logger.error("Failed to generate sequence")
+            return
         sequence_list = self.fuzzer.graph.generate_sequence_by_chatgpt(
             raw_sequence_list
         )

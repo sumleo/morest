@@ -3,8 +3,7 @@ from typing import Any, Dict, List
 
 import loguru
 
-from constant.parameter import (ParameterLocation, ParameterType,
-                                RequestBodyContent)
+from constant.parameter import ParameterLocation, ParameterType, RequestBodyContent
 
 logger = loguru.logger
 ARRAY_NOTATION = "[0]"

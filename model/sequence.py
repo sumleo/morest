@@ -1,12 +1,15 @@
 import copy
 import dataclasses
+import uuid
 from typing import Dict, List, Tuple
 
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute
-from model.parameter_dependency import (InContextAttributeDependency,
-                                        InContextParameterDependency,
-                                        ParameterDependency)
+from model.parameter_dependency import (
+    InContextAttributeDependency,
+    InContextParameterDependency,
+    ParameterDependency,
+)
 
 
 @dataclasses.dataclass
@@ -22,12 +25,13 @@ class Sequence:
         int, List[InContextAttributeDependency]
     ] = dataclasses.field(default_factory=dict)
     is_from_chatgpt: bool = False
+    sequence_id: str = dataclasses.field(default_factory=lambda: str(uuid.uuid4()))
 
     def add_method(self, method: Method):
         self.method_sequence.append(method)
 
     def add_parameter_dependency(
-        self, parameter_dependency: InContextParameterDependency
+            self, parameter_dependency: InContextParameterDependency
     ):
         consumer_index = parameter_dependency.consumer_index
         producer_index = parameter_dependency.producer_index

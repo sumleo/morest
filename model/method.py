@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import loguru
@@ -30,6 +31,9 @@ class Method:
         self.method_type: MethodRequestType = MethodRequestType(method_type)
         self.method_raw_body: dict = method_raw_body
 
+        # method id
+        self.method_id: str = f"{uuid.uuid4()}"
+
     def parse_parameters(self):
         logger.info(f"parse method {self.signature}")
 
@@ -60,12 +64,15 @@ class Method:
                     parameter.request_body_content = RequestBodyContent.JSON
 
                 self.request_parameter[parameter.name] = parameter
-        elif self.method_raw_body.__contains__("requestBody"):
+        if self.method_raw_body.__contains__("requestBody"):
             raw_request_parameters = self.method_raw_body["requestBody"]
             parameter_location: ParameterLocation = ParameterLocation.BODY
 
             for request_body_type in raw_request_parameters["content"]:
-                if "json" not in request_body_type:
+                if (
+                    "json" not in request_body_type
+                    and "octet-stream" not in request_body_type
+                ):
                     logger.error(
                         f"request body type {request_body_type} is not supported"
                     )
@@ -88,13 +95,6 @@ class Method:
                 parameter.description = description
                 parameter.method = self
                 self.request_parameter[parameter.name] = parameter
-
-        elif not self.method_raw_body.__contains__(
-            "parameters"
-        ) and not self.method_raw_body.__contains__("requestBody"):
-            pass
-        else:
-            raise ValueError("request parameter is not found")
 
         # parse response parameters
         if self.method_raw_body.__contains__("responses"):

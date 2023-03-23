@@ -110,8 +110,7 @@ class Fuzzer:
             )
 
             # update sequence list
-            if len(self.pending_sequence_list) == 0:
+            if self.pending_sequence_list == 0:
                 continue
-            self.sequence_list = (
-                self.pending_sequence_list + self.single_method_sequence_list
-            )
+            self.sequence_list += self.pending_sequence_list
+            self.pending_sequence_list.clear()
