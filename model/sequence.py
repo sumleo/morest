@@ -31,7 +31,7 @@ class Sequence:
         self.method_sequence.append(method)
 
     def add_parameter_dependency(
-            self, parameter_dependency: InContextParameterDependency
+        self, parameter_dependency: InContextParameterDependency
     ):
         consumer_index = parameter_dependency.consumer_index
         producer_index = parameter_dependency.producer_index
