@@ -1,10 +1,10 @@
 import argparse
 import glob
+import shutil
 from typing import List
 
 import loguru
 import prance
-import shutil
 
 from algo.fuzzer import Fuzzer
 from constant.fuzzer_config import FuzzerConfig
@@ -68,7 +68,9 @@ def main():
 
 
 def list_folder_extract_yaml_files(folder_path: str):
-    yaml_file_absolute_path_list = glob.glob(folder_path + "/*.json") + glob.glob(folder_path + "/*.yaml")
+    yaml_file_absolute_path_list = glob.glob(folder_path + "/*.json") + glob.glob(
+        folder_path + "/*.yaml"
+    )
     count = 0
     error_count = 0
     for yaml_file_absolute_path in yaml_file_absolute_path_list:
@@ -77,7 +79,10 @@ def list_folder_extract_yaml_files(folder_path: str):
             apis = parsing(yaml_file_absolute_path)
             count += len(apis)
             # copy valid doc to another folder
-            shutil.copy(yaml_file_absolute_path, "./valid_doc/" + yaml_file_absolute_path.split("/")[-1])
+            shutil.copy(
+                yaml_file_absolute_path,
+                "./valid_doc/" + yaml_file_absolute_path.split("/")[-1],
+            )
         except Exception as e:
             error_count += 1
             loguru.logger.error(f"error: {e}")

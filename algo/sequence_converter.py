@@ -10,11 +10,9 @@ from algo.runtime_dictionary import ReferenceValueResult, RuntimeDictionary
 from constant.api import ResponseCustomizedStatusCode
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute
-from model.parameter_dependency import (
-    InContextAttributeDependency,
-    InContextParameterDependency,
-    ParameterDependency,
-)
+from model.parameter_dependency import (InContextAttributeDependency,
+                                        InContextParameterDependency,
+                                        ParameterDependency)
 from model.request_response import Request, Response
 from model.sequence import Sequence
 from util.request_builder import build_request
@@ -148,6 +146,7 @@ class SequenceConverter:
         self._new_session()
 
         last_response: Response = None
+        request_list: List[Request] = []
         response_list: List[Response] = []
 
         # generate value for each parameter in the sequence methods' parameters
@@ -172,6 +171,9 @@ class SequenceConverter:
             # add to response list
             response_list.append(response)
 
+            # add to request list
+            request_list.append(request)
+
             # update dependency success count
             for reference_result in reference_result_list:
                 if 200 <= response.status_code < 300:
@@ -181,7 +183,7 @@ class SequenceConverter:
 
             # call analysis function
             self.fuzzer._on_request_response(sequence, request, response)
-
+        self.fuzzer._on_sequence_end(sequence, request_list, response_list)
         return sequence
 
     def _generate_value_for_method_by_chatgpt(self, method: Method):
@@ -204,3 +206,4 @@ class SequenceConverter:
             logger.info(f"ChatGPT instance request success: {request.method.signature}")
 
         self.fuzzer._on_request_response(None, request, response)
+        self.fuzzer._on_sequence_end(None, [request], [response])

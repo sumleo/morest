@@ -8,6 +8,7 @@ import loguru
 from algo.chatgpt_agent import ChatGPTAgent
 from algo.sequence_converter import SequenceConverter
 from analysis.base_analysis import Analysis
+from analysis.result_writer_analysis import ResultWriterAnalysis
 from analysis.statistic_analysis import StatisticAnalysis
 from constant.data_generation_config import DataGenerationConfig
 from constant.fuzzer_config import FuzzerConfig
@@ -18,7 +19,7 @@ from model.sequence import Sequence
 
 logger = loguru.logger
 
-ANALYSIS = [StatisticAnalysis]
+ANALYSIS = [StatisticAnalysis, ResultWriterAnalysis]
 
 
 class Fuzzer:
@@ -31,7 +32,7 @@ class Fuzzer:
         self.graph: OperationDependencyGraph = graph
         self.config: FuzzerConfig = config
         self.time_budget: float = config.time_budget
-        self.chatgpt_agent: ChatGPTAgent = ChatGPTAgent(self)
+        # self.chatgpt_agent: ChatGPTAgent = ChatGPTAgent(self)
         self.sequence_list: List[Sequence] = []
         self.sequence_converter: SequenceConverter = SequenceConverter(self)
         self.data_generation_config: DataGenerationConfig = DataGenerationConfig()
@@ -47,8 +48,8 @@ class Fuzzer:
     def setup(self):
         logger.info("Fuzzer setup")
         self._init_analysis()
-        self.chatgpt_agent.init_chatgpt()
-        self.chatgpt_agent.generate_sequence_from_method_list(self.graph.method_list)
+        # self.chatgpt_agent.init_chatgpt()
+        # self.chatgpt_agent.generate_sequence_from_method_list(self.graph.method_list)
         self.single_method_sequence_list = self.graph._generate_single_method_sequence()
         self.sequence_list = (
             self.graph.generate_sequence() + self.single_method_sequence_list
@@ -76,6 +77,19 @@ class Fuzzer:
         for analysis in self.analysis_list:
             analysis.on_request_response(sequence, request, response)
 
+    def _on_sequence_end(
+        self,
+        sequence: Sequence,
+        request_list: List[Request],
+        response_list: List[Response],
+    ):
+        for analysis in self.analysis_list:
+            analysis.on_sequence_end(sequence, request_list, response_list)
+
+    def _on_end(self):
+        for analysis in self.analysis_list:
+            analysis.on_end()
+
     def warm_up(self):
         logger.info("warmup")
 
@@ -94,7 +108,7 @@ class Fuzzer:
                 converter.convert(sequence)
 
             # process chatgpt result
-            self.chatgpt_agent.process_chatgpt_result()
+            # self.chatgpt_agent.process_chatgpt_result()
 
             # execute pending request
             for request in self.pending_request_list:
@@ -105,12 +119,15 @@ class Fuzzer:
             self._on_iteration_end()
 
             # handle the case that all methods are never success
-            self.chatgpt_agent.generate_request_instance_by_openapi_document(
-                list(self.never_success_method_set)
-            )
+            # self.chatgpt_agent.generate_request_instance_by_openapi_document(
+            #     list(self.never_success_method_set)
+            # )
 
             # update sequence list
             if self.pending_sequence_list == 0:
                 continue
             self.sequence_list += self.pending_sequence_list
             self.pending_sequence_list.clear()
+            break
+
+        self._on_end()

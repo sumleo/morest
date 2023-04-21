@@ -1,3 +1,5 @@
+from typing import List
+
 from model.operation_dependency_graph import OperationDependencyGraph
 from model.request_response import Request, Response
 from model.sequence import Sequence
@@ -12,6 +14,14 @@ class Analysis:
 
     def on_request_response(
         self, sequence: Sequence, request: Request, response: Response
+    ):
+        pass
+
+    def on_sequence_end(
+        self,
+        sequence: Sequence,
+        request_list: List[Request],
+        response_list: List[Response],
     ):
         pass
 

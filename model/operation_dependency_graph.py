@@ -2,6 +2,7 @@ import dataclasses
 from typing import Dict, List, Tuple
 
 import loguru
+from graphviz import Digraph
 
 from algo.chatgpt_agent import ChatGPTAgent
 from model.api import API
@@ -9,9 +10,9 @@ from model.match_rule.base_rule import Rule
 from model.match_rule.substr_rule import SubStringRule
 from model.method import Method
 from model.parameter import ParameterAttribute
-from model.parameter_dependency import InContextParameterDependency, ParameterDependency
+from model.parameter_dependency import (InContextParameterDependency,
+                                        ParameterDependency)
 from model.sequence import Sequence
-from graphviz import Digraph
 
 logger = loguru.logger
 
@@ -27,7 +28,7 @@ class Edge:
     def graphviz_label(self):
         label = "Params: "
         for parameter_dependency in self.parameter_dependency_list:
-            label += f'{parameter_dependency.producer_parameter.attribute_path} -> {parameter_dependency.consumer_parameter.attribute_path},'
+            label += f"{parameter_dependency.producer_parameter.attribute_path} -> {parameter_dependency.consumer_parameter.attribute_path},"
         return label
 
 
@@ -64,8 +65,8 @@ class OperationDependencyGraph:
                     continue
                 for rule in self.rule_list:
                     if (
-                            producer.operation_id == "addPet"
-                            and consumer.operation_id == "getPetById"
+                        producer.operation_id == "addPet"
+                        and consumer.operation_id == "getPetById"
                     ):
                         a = 1
                     if rule.has_parameter_dependency(producer, consumer):
@@ -94,8 +95,8 @@ class OperationDependencyGraph:
                                 parameter_dependency.producer_parameter,
                             )
                             if (
-                                    producer_tuple
-                                    not in self.producer_and_parameter_attribute_to_edge_map
+                                producer_tuple
+                                not in self.producer_and_parameter_attribute_to_edge_map
                             ):
                                 self.producer_and_parameter_attribute_to_edge_map[
                                     producer_tuple
@@ -108,8 +109,8 @@ class OperationDependencyGraph:
                                 parameter_dependency.consumer_parameter,
                             )
                             if (
-                                    consumer_tuple
-                                    not in self.consumer_and_parameter_attribute_to_edge_map
+                                consumer_tuple
+                                not in self.consumer_and_parameter_attribute_to_edge_map
                             ):
                                 self.consumer_and_parameter_attribute_to_edge_map[
                                     consumer_tuple
@@ -133,7 +134,7 @@ class OperationDependencyGraph:
         return sequence_list
 
     def generate_sequence_by_chatgpt(
-            self, test_sequence_list: List[List[str]]
+        self, test_sequence_list: List[List[str]]
     ) -> List[Sequence]:
         """
         Generate sequence by chatgpt
@@ -150,7 +151,7 @@ class OperationDependencyGraph:
                 sequence.add_method(consumer)
                 # check has dependency
                 for producer_index, producer in enumerate(
-                        sequence.method_sequence[:-1]
+                    sequence.method_sequence[:-1]
                 ):
                     if (producer, consumer) in self.producer_consumer_to_edge_map:
                         dependency = InContextParameterDependency()
@@ -189,7 +190,7 @@ class OperationDependencyGraph:
         return None
 
     def _generate_sequence(
-            self, producer: Method, sequence: Sequence
+        self, producer: Method, sequence: Sequence
     ) -> List[Sequence]:
         """
         Recursive generate sequence by producer-consumer map

@@ -22,6 +22,17 @@ class Request:
     files: Dict[str, Any] = dataclasses.field(default_factory=dict)
     form_data: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
+    def to_dict(self):
+        return {
+            "method": self.method.method_path,
+            "url": self.url,
+            "params": self.params,
+            "data": self.data,
+            "headers": self.headers,
+            "files": self.files,
+            "form_data": self.form_data,
+        }
+
 
 @dataclasses.dataclass
 class Response:
@@ -94,3 +105,6 @@ class Response:
                 header_key, response.headers[header_key], ParameterLocation.HEADER
             )
         self._parse_json_value("", response.json(), ParameterLocation.BODY)
+
+    def to_dict(self):
+        return {"status_code": self.status_code, "text": self.text}

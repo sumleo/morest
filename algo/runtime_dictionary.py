@@ -9,7 +9,8 @@ from constant.data_generation_config import DataGenerationConfig
 from constant.parameter import ParameterLocation, ParameterType
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute
-from model.parameter_dependency import ParameterDependency, ReferenceValueResult
+from model.parameter_dependency import (ParameterDependency,
+                                        ReferenceValueResult)
 from model.request_response import Request, Response
 
 logger = loguru.logger
