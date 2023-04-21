@@ -112,7 +112,7 @@ As you generate your test cases, consider the various HTTP methods that are supp
 
 Please note that your test cases must be logically sound, complete and free of errors, as they will be used to test the functionality of the RESTful APIs.
 
-You must not include any conclusion, explaination and purpose.
+You must not include any conclusion, explanation and purpose.
 
 You must only output testcases.
 

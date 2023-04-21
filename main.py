@@ -4,6 +4,7 @@ from typing import List
 
 import loguru
 import prance
+import shutil
 
 from algo.fuzzer import Fuzzer
 from constant.fuzzer_config import FuzzerConfig
@@ -35,6 +36,7 @@ def parsing(api_document_path: str) -> List[API]:
         api_document_path,
         backend="openapi-spec-validator",
         recursion_limit_handler=default_reclimit_handler,
+        strict=False,
     )
     apis = wrap_methods_from_open_api_document(parser.specification)
     return apis
@@ -46,6 +48,7 @@ def main():
     # build odg
     odg = OperationDependencyGraph(apis)
     odg.build()
+    graph = odg.generate_graph()
 
     # init fuzzer
     config = FuzzerConfig()
@@ -65,16 +68,23 @@ def main():
 
 
 def list_folder_extract_yaml_files(folder_path: str):
-    yaml_file_absolute_path_list = glob.glob(folder_path + "/*.json")
+    yaml_file_absolute_path_list = glob.glob(folder_path + "/*.json") + glob.glob(folder_path + "/*.yaml")
     count = 0
+    error_count = 0
     for yaml_file_absolute_path in yaml_file_absolute_path_list:
-        loguru.logger.info(f"parsing {yaml_file_absolute_path}")
-        parsing(yaml_file_absolute_path)
-    logger.info(
-        f"total {count} / {len(yaml_file_absolute_path_list)} yaml files are parsed successfully"
-    )
+        try:
+            loguru.logger.info(f"parsing {yaml_file_absolute_path}")
+            apis = parsing(yaml_file_absolute_path)
+            count += len(apis)
+            # copy valid doc to another folder
+            shutil.copy(yaml_file_absolute_path, "./valid_doc/" + yaml_file_absolute_path.split("/")[-1])
+        except Exception as e:
+            error_count += 1
+            loguru.logger.error(f"error: {e}")
+    loguru.logger.info(f"total apis: {count}")
+    loguru.logger.info(f"error apis: {error_count}")
 
 
 if __name__ == "__main__":
-    # list_folder_extract_yaml_files("./doc")
+    # list_folder_extract_yaml_files("./refine_document_new")
     main()
