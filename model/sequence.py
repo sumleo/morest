@@ -5,11 +5,9 @@ from typing import Dict, List, Tuple
 
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute
-from model.parameter_dependency import (
-    InContextAttributeDependency,
-    InContextParameterDependency,
-    ParameterDependency,
-)
+from model.parameter_dependency import (InContextAttributeDependency,
+                                        InContextParameterDependency,
+                                        ParameterDependency)
 
 
 @dataclasses.dataclass

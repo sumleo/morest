@@ -9,7 +9,8 @@ from constant.data_generation_config import DataGenerationConfig
 from constant.parameter import ParameterLocation, ParameterType
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute
-from model.parameter_dependency import ParameterDependency, ReferenceValueResult
+from model.parameter_dependency import (ParameterDependency,
+                                        ReferenceValueResult)
 from model.request_response import Request, Response
 
 logger = loguru.logger
@@ -42,8 +43,11 @@ class RuntimeDictionary:
     def _choose_dependency(
         self, dependency_list: List[ParameterDependency]
     ) -> ParameterDependency:
-        index = rl_algorithm(dependency_list)
-        return dependency_list[index]
+        if self.fuzzer.config.enable_reinforcement_learning:
+            index = rl_algorithm(dependency_list)
+            return dependency_list[index]
+        else:
+            return dependency_list[np.random.randint(0, len(dependency_list))]
 
     def fetch_value(
         self,
