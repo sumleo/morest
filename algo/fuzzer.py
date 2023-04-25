@@ -29,6 +29,7 @@ class Fuzzer:
         self.output_dir: pathlib.Path = (
             pathlib.Path(config.output_dir) / self.start_time_str
         )
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         self.graph: OperationDependencyGraph = graph
         self.config: FuzzerConfig = config
         self.time_budget: float = config.time_budget

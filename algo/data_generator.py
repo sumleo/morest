@@ -14,10 +14,12 @@ from constant.data_generation_config import DataGenerationConfig
 from constant.parameter import ParameterType
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute, ParameterType
-from model.parameter_dependency import (InContextAttributeDependency,
-                                        InContextParameterDependency,
-                                        ParameterDependency,
-                                        ReferenceValueResult)
+from model.parameter_dependency import (
+    InContextAttributeDependency,
+    InContextParameterDependency,
+    ParameterDependency,
+    ReferenceValueResult,
+)
 from model.request_response import Response
 from model.sequence import Sequence
 

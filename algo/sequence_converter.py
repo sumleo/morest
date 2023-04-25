@@ -10,9 +10,11 @@ from algo.runtime_dictionary import ReferenceValueResult, RuntimeDictionary
 from constant.api import ResponseCustomizedStatusCode
 from model.method import Method
 from model.parameter import Parameter, ParameterAttribute
-from model.parameter_dependency import (InContextAttributeDependency,
-                                        InContextParameterDependency,
-                                        ParameterDependency)
+from model.parameter_dependency import (
+    InContextAttributeDependency,
+    InContextParameterDependency,
+    ParameterDependency,
+)
 from model.request_response import Request, Response
 from model.sequence import Sequence
 from util.request_builder import build_request

@@ -10,8 +10,7 @@ from model.match_rule.base_rule import Rule
 from model.match_rule.substr_rule import SubStringRule
 from model.method import Method
 from model.parameter import ParameterAttribute
-from model.parameter_dependency import (InContextParameterDependency,
-                                        ParameterDependency)
+from model.parameter_dependency import InContextParameterDependency, ParameterDependency
 from model.sequence import Sequence
 
 logger = loguru.logger

@@ -19,6 +19,7 @@ parser.add_argument("--time_budget", type=float, default=600)
 parser.add_argument("--warm_up_times", type=int, default=5)
 parser.add_argument("--url", type=str, default="http://localhost:8080/api/v3")
 parser.add_argument("--chatgpt", type=bool, default=False)
+parser.add_argument("--output_dir", type=str, default="output")
 args = parser.parse_args()
 
 logger = loguru.logger
@@ -57,6 +58,7 @@ def main():
     config.warm_up_times = args.warm_up_times
     config.url = args.url
     config.enable_chatgpt = args.chatgpt
+    config.output_dir = args.output_dir
     fuzzer = Fuzzer(odg, config)
 
     # setup fuzzer

@@ -73,8 +73,7 @@ class ResultWriterAnalysis(Analysis):
 
     def on_end(self):
         # write result
-        result_folder = pathlib.Path("result")
-        result_folder.mkdir(exist_ok=True)
+        result_folder = self.fuzzer.output_dir
         current_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
         result_file = result_folder / f"{current_time}.json"
         result = {
