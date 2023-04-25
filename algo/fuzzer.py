@@ -32,7 +32,7 @@ class Fuzzer:
         self.graph: OperationDependencyGraph = graph
         self.config: FuzzerConfig = config
         self.time_budget: float = config.time_budget
-        # self.chatgpt_agent: ChatGPTAgent = ChatGPTAgent(self)
+        self.chatgpt_agent: ChatGPTAgent = ChatGPTAgent(self)
         self.sequence_list: List[Sequence] = []
         self.sequence_converter: SequenceConverter = SequenceConverter(self)
         self.data_generation_config: DataGenerationConfig = DataGenerationConfig()
@@ -48,8 +48,12 @@ class Fuzzer:
     def setup(self):
         logger.info("Fuzzer setup")
         self._init_analysis()
-        # self.chatgpt_agent.init_chatgpt()
-        # self.chatgpt_agent.generate_sequence_from_method_list(self.graph.method_list)
+
+        if self.config.enable_chatgpt:
+            self.chatgpt_agent.generate_sequence_from_method_list(
+                self.graph.method_list
+            )
+
         self.single_method_sequence_list = self.graph._generate_single_method_sequence()
         self.sequence_list = (
             self.graph.generate_sequence() + self.single_method_sequence_list
@@ -108,7 +112,8 @@ class Fuzzer:
                 converter.convert(sequence)
 
             # process chatgpt result
-            # self.chatgpt_agent.process_chatgpt_result()
+            if self.config.enable_chatgpt:
+                self.chatgpt_agent.process_chatgpt_result()
 
             # execute pending request
             for request in self.pending_request_list:
@@ -119,15 +124,15 @@ class Fuzzer:
             self._on_iteration_end()
 
             # handle the case that all methods are never success
-            # self.chatgpt_agent.generate_request_instance_by_openapi_document(
-            #     list(self.never_success_method_set)
-            # )
+            if self.config.enable_chatgpt and len(self.never_success_method_set) > 0:
+                self.chatgpt_agent.generate_request_instance_by_openapi_document(
+                    list(self.never_success_method_set)
+                )
 
             # update sequence list
             if self.pending_sequence_list == 0:
                 continue
             self.sequence_list += self.pending_sequence_list
             self.pending_sequence_list.clear()
-            break
 
         self._on_end()

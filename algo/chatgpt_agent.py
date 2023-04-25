@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Set, Tuple
 
 import loguru
 
-from constant.chatgpt_config import ChatGPTCommandType, ChatGPTConfig
+from constant.chatgpt_config import ChatGPTCommandType
 from model.method import Method
 from model.request_response import Request
 from util.chatgpt import ChatGPT
@@ -29,15 +29,6 @@ class ChatGPTCommand:
 class CommandResponse:
     command: ChatGPTCommand = None
     result: Any = None
-
-
-@dataclasses.dataclass
-class InitializeCommand(ChatGPTCommand):
-    command: ChatGPTCommandType = ChatGPTCommandType.INITIALIZE
-
-    def execute(self, agent: "ChatGPTAgent"):
-        agent.start_conversation()
-        return True
 
 
 @dataclasses.dataclass
@@ -82,9 +73,7 @@ class GeneratePlainInstanceFromMethodDocCommand(ChatGPTCommand):
 class ChatGPTAgent:
     def __init__(self, fuzzer: "Fuzzer"):
         self.fuzzer: "Fuzzer" = fuzzer
-        self.chatgpt_config: ChatGPTConfig = ChatGPTConfig()
-        self.chatgpt: ChatGPT = ChatGPT(self.chatgpt_config)
-        self.conversation_id: str = None
+        self.chatgpt: ChatGPT = ChatGPT()
         self.has_pending_method_instance_generation: bool = False
         self.init_prompt: str = """
 As an experienced and knowledgeable tester of RESTful APIs, your task is to thoroughly test the API using the OpenAPI/Swagger documents provided. You are responsible for identifying any missing or incorrect information in the documentation, fixing the issues, and generating test cases that cover all the functionalities of the API. Additionally, you need to identify parameter dependencies in different API/Operation/Method(s) and update the OpenAPI/Swagger documents to reflect the dependencies.
@@ -168,9 +157,6 @@ Each request instance must a valid json in one line.
         self.command_response_handler_map: Dict[
             ChatGPTCommandType, Callable[[CommandResponse], None]
         ] = {
-            ChatGPTCommandType.INITIALIZE: lambda response: logger.info(
-                "initialize chatgpt"
-            ),
             ChatGPTCommandType.GENERATE_SEQUENCE: self._handle_generate_sequence_response,
             ChatGPTCommandType.GENERATE_PLAIN_INSTANCE: self._handle_generate_plain_instance_response,
         }
@@ -182,11 +168,6 @@ Each request instance must a valid json in one line.
         )
         # start worker thread
         self.worker_thread.start()
-
-    def init_chatgpt(self):
-        logger.info("initialize chatgpt")
-        initialize_command = InitializeCommand()
-        self.execute_command(initialize_command)
 
     def generate_sequence_from_method_list(self, method_list: List[Method]) -> str:
         logger.info("generate sequence from method list")
@@ -210,10 +191,6 @@ Each request instance must a valid json in one line.
             # Wait for a task to become available
             command = command_queue.get()
 
-            # if debug mode, skip command
-            if self.chatgpt_config.is_debugging:
-                continue
-
             # Indicate that a task is available
             has_task = True
 
@@ -229,18 +206,12 @@ Each request instance must a valid json in one line.
             # Indicate that the task is complete
             has_task = False
 
-    def start_conversation(self):
-        logger.info("start conversation")
-        text, self.conversation_id = self.chatgpt.send_new_message(self.init_prompt)
-        logger.info(f"conversation id: {self.conversation_id}")
-        logger.info(f"chatgpt response: {text}")
-
     def _generate_sequence_from_method_list(self, method_list: List[Method]) -> str:
         logger.info("generate sequence from method list")
         prompt: str = self.sequence_generation_prompt
         for method in method_list:
             prompt += f"{method.operation_id}: {method.method_type.value}: {method.method_path} ({method.summary}) ({method.description})\n"
-        result = self.chatgpt.send_message(prompt, self.conversation_id)
+        result = self.chatgpt.send_message(prompt)
         return result
 
     def _generate_sequence_for_failed_method_list(
@@ -248,9 +219,9 @@ Each request instance must a valid json in one line.
     ) -> str:
         logger.info("generate sequence for failed method list")
         prompt: str = self.sequence_generation_prompt
-        for method in method_list:
+        for method in failed_method_list + success_method_list:
             prompt += f"{method.operation_id}: {method.method_type.value}: {method.method_path} ({method.summary}) ({method.description})\n"
-        result = self.chatgpt.send_message(prompt, self.conversation_id)
+        result = self.chatgpt.send_message(prompt)
         return result
 
     def parse_raw_sequence(self, raw_text: str) -> List[List[str]]:
@@ -282,7 +253,7 @@ Each request instance must a valid json in one line.
         {api_document}
         
         """
-        result = self.chatgpt.send_message(prompt, self.conversation_id)
+        result = self.chatgpt.send_message(prompt)
         return result
 
     def _generate_request_instance_sequence_by_openapi_document(
@@ -307,12 +278,10 @@ Each request instance must a valid json in one line.
 
 
          """
-        result = self.chatgpt.send_message(prompt, self.conversation_id)
+        result = self.chatgpt.send_message(prompt)
         return result
 
     def generate_request_instance_by_openapi_document(self, method_list: List[Method]):
-        if self.conversation_id is None:
-            return
         if self.has_pending_method_instance_generation:
             return
         chunk_method_list = []
@@ -333,8 +302,6 @@ Each request instance must a valid json in one line.
     def generate_test_case_and_instance_containing_never_success_method(
         self, method_list: List[Method]
     ):
-        if self.conversation_id is None:
-            return
         if self.has_pending_method_instance_generation:
             return
 
