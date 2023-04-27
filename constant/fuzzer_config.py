@@ -9,3 +9,5 @@ class FuzzerConfig:
     output_dir: str = "output"
     enable_chatgpt: bool = True
     enable_reinforcement_learning: bool = True
+    enable_sequence: bool = True
+    enable_instance: bool = True

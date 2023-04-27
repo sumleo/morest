@@ -37,6 +37,8 @@ class GenerateSequenceFromMethodListCommand(ChatGPTCommand):
     method_list: List[Method] = dataclasses.field(default_factory=list)
 
     def execute(self, agent: "ChatGPTAgent"):
+        if not agent.fuzzer.config.enable_sequence:
+            return None
         raw_sequence = agent._generate_sequence_from_method_list(self.method_list)
         if raw_sequence is None:
             return None
@@ -50,6 +52,8 @@ class GenerateSequenceForFailedMethodListCommand(ChatGPTCommand):
     failed_method_list: List[Method] = dataclasses.field(default_factory=list)
 
     def execute(self, agent: "ChatGPTAgent"):
+        if not agent.fuzzer.config.enable_sequence:
+            return None
         raw_sequence = agent._generate_sequence_from_method_list(self.method_list)
         if raw_sequence is None:
             return None
@@ -62,6 +66,8 @@ class GeneratePlainInstanceFromMethodDocCommand(ChatGPTCommand):
     method_list: List[Method] = dataclasses.field(default_factory=list)
 
     def execute(self, agent: "ChatGPTAgent"):
+        if not agent.fuzzer.config.enable_instance:
+            return None
         raw_response = agent._generate_request_instance_by_openapi_document(
             self.method_list
         )
@@ -180,7 +186,7 @@ Each request instance must a valid json in one line.
         self.command_queue.put(command)
 
     def _execute_command_worker(
-        self, command_queue: queue.Queue, command_response_queue: queue.Queue
+            self, command_queue: queue.Queue, command_response_queue: queue.Queue
     ):
         logger.info("start command worker")
         has_task = False
@@ -215,7 +221,7 @@ Each request instance must a valid json in one line.
         return result
 
     def _generate_sequence_for_failed_method_list(
-        self, success_method_list: List[Method], failed_method_list: List[Method]
+            self, success_method_list: List[Method], failed_method_list: List[Method]
     ) -> str:
         logger.info("generate sequence for failed method list")
         prompt: str = self.sequence_generation_prompt
@@ -257,7 +263,7 @@ Each request instance must a valid json in one line.
         return result
 
     def _generate_request_instance_sequence_by_openapi_document(
-        self, method_list: List[Method]
+            self, method_list: List[Method]
     ):
         """
         Generate a request instance following the OpenAPI document.
@@ -300,7 +306,7 @@ Each request instance must a valid json in one line.
             self.command_queue.put(command)
 
     def generate_test_case_and_instance_containing_never_success_method(
-        self, method_list: List[Method]
+            self, method_list: List[Method]
     ):
         if self.has_pending_method_instance_generation:
             return

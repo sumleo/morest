@@ -21,6 +21,8 @@ parser.add_argument("--url", type=str, default="http://localhost:8080/api/v3")
 parser.add_argument("--chatgpt", type=bool, default=False)
 parser.add_argument("--output_dir", type=str, default="output")
 parser.add_argument("--rl", type=bool, default=False)
+parser.add_argument("--sequence", type=bool, default=True)
+parser.add_argument("--instance", type=bool, default=True)
 args = parser.parse_args()
 
 logger = loguru.logger
@@ -61,6 +63,8 @@ def main():
     config.enable_chatgpt = args.chatgpt
     config.output_dir = args.output_dir
     config.enable_reinforcement_learning = args.rl
+    config.enable_sequence = args.sequence
+    config.enable_instance = args.instance
     fuzzer = Fuzzer(odg, config)
 
     # setup fuzzer
