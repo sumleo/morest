@@ -61,11 +61,11 @@ class ParameterAttribute:
     parameter_value_list: List[Any] = None
 
     def __init__(
-        self,
-        attribute_name: str,
-        attribute_path: str,
-        parameter: "Parameter",
-        parameter_attribute_raw_body: dict,
+            self,
+            attribute_name: str,
+            attribute_path: str,
+            parameter: "Parameter",
+            parameter_attribute_raw_body: dict,
     ):
         # root parameter
         self.parameter: Parameter = parameter
@@ -91,8 +91,8 @@ class ParameterAttribute:
 
         # check if the parameter attribute is a schema
         if (
-            parameter_attribute_raw_body.__contains__("schema")
-            and parameter_attribute_raw_body["schema"].__contains__("properties")
+                parameter_attribute_raw_body.__contains__("schema")
+                and parameter_attribute_raw_body["schema"].__contains__("properties")
         ) or parameter_attribute_raw_body.__contains__("properties"):
             self.parameter_type: ParameterType = ParameterType.OBJECT
         else:
@@ -100,6 +100,14 @@ class ParameterAttribute:
                 self.parameter_type: ParameterType = ParameterType(
                     parameter_attribute_raw_body["schema"]["type"]
                 )
+            elif parameter_attribute_raw_body.__contains__("anyOf"):
+                # temp support for anyOf
+                self.parameter_type: ParameterType = ParameterType(
+                    parameter_attribute_raw_body["anyOf"][0]["type"]
+                )
+            elif "type" not in parameter_attribute_raw_body:
+                # temp support for typeless
+                self.parameter_type: ParameterType = ParameterType.STRING
             else:
                 self.parameter_type: ParameterType = ParameterType(
                     parameter_attribute_raw_body["type"]
@@ -156,7 +164,7 @@ class ParameterAttribute:
 
 class Parameter:
     def __init__(
-        self, name: str, parameter_location: ParameterLocation, parameter_raw_body: dict
+            self, name: str, parameter_location: ParameterLocation, parameter_raw_body: dict
     ):
         self.parameter_raw_body: dict = parameter_raw_body
         self.name: str = name
@@ -228,12 +236,12 @@ class Parameter:
             )
 
     def recursive_parse_parameter(
-        self,
-        parameter_name: str,
-        parameter_body: dict,
-        parent_path: str,
-        parent_attribute: ParameterAttribute,
-        parent_required: bool,
+            self,
+            parameter_name: str,
+            parameter_body: dict,
+            parent_path: str,
+            parent_attribute: ParameterAttribute,
+            parent_required: bool,
     ):
         parameter_name: str = parameter_name
         parameter_path: str = (
@@ -262,7 +270,7 @@ class Parameter:
         else:
             parameter_attribute.required = parameter_body.get("required", False)
             parameter_attribute.global_required = (
-                parent_required and parameter_body.get("required", False)
+                    parent_required and parameter_body.get("required", False)
             )
             parent_attribute.add_child_parameter_attribute(parameter_attribute)
             parameter_attribute.set_parent_parameter_attribute(parent_attribute)
@@ -305,7 +313,7 @@ class Parameter:
                 )
                 child_attribute.required = is_required
                 child_attribute.global_required = (
-                    parameter_attribute.global_required and is_required
+                        parameter_attribute.global_required and is_required
                 )
                 children.append(child_attribute)
 
@@ -316,11 +324,11 @@ class Parameter:
                         child.add_sibling_parameter_attribute(sibling)
 
         elif parameter_attribute.parameter_type in (
-            ParameterType.STRING,
-            ParameterType.BOOLEAN,
-            ParameterType.INTEGER,
-            ParameterType.NUMBER,
-            ParameterType.FILE,
+                ParameterType.STRING,
+                ParameterType.BOOLEAN,
+                ParameterType.INTEGER,
+                ParameterType.NUMBER,
+                ParameterType.FILE,
         ):
             pass
         else:
