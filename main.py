@@ -24,7 +24,7 @@ yaml_path = "pet-test.json"
 parser = argparse.ArgumentParser()
 parser.add_argument("--yaml_path", type=str, default=yaml_path)
 parser.add_argument("--time_budget", type=float, default=600)
-parser.add_argument("--warm_up_times", type=int, default=0)
+parser.add_argument("--warm_up_times", type=int, default=5)
 parser.add_argument("--url", type=str, default="https://petstore3.swagger.io/api/v3")
 parser.add_argument("--chatgpt", type=bool, default=True)
 parser.add_argument("--output_dir", type=str, default="output")
