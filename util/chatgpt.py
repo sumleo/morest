@@ -20,7 +20,7 @@ openai.api_key = config["api_key"]
 
 def chatgpt_completion(history: List) -> str:
     response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4",
         messages=history,
     )
     return response["choices"][0]["message"]["content"]
@@ -31,7 +31,3 @@ class ChatGPT:
         history = [{"role": "user", "content": message}]
         response = chatgpt_completion(history)
         return response
-
-    def extract_code_fragments(self, text):
-        code_fragments = re.findall(r"```(.*?)```", text, re.DOTALL)
-        return code_fragments

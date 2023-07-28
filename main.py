@@ -20,18 +20,16 @@ import json
 import os
 
 
-# yaml_path = "pet-basic.json"
-# parser = argparse.ArgumentParser()
-# parser.add_argument("--yaml_path", type=str, default=yaml_path)
-# parser.add_argument("--time_budget", type=float, default=600)
-# parser.add_argument("--warm_up_times", type=int, default=5)
-# parser.add_argument("--url", type=str, default="https://stage.glowing.ai/api/v1")
-# parser.add_argument("--chatgpt", type=bool, default=False)
-# parser.add_argument("--output_dir", type=str, default="output")
-# parser.add_argument("--rl", type=bool, default=False)
-# parser.add_argument("--sequence", type=bool, default=True)
-# parser.add_argument("--instance", type=bool, default=True)
-# args = parser.parse_args()
+yaml_path = "pet-test.json"
+parser = argparse.ArgumentParser()
+parser.add_argument("--yaml_path", type=str, default=yaml_path)
+parser.add_argument("--time_budget", type=float, default=600)
+parser.add_argument("--warm_up_times", type=int, default=0)
+parser.add_argument("--url", type=str, default="https://petstore3.swagger.io/api/v3")
+parser.add_argument("--chatgpt", type=bool, default=True)
+parser.add_argument("--output_dir", type=str, default="output")
+parser.add_argument("--rl", type=bool, default=True)
+args = parser.parse_args()
 
 logger = loguru.logger
 logger.add("log/{time}.log")
@@ -97,8 +95,6 @@ def main(task_config: TaskConfig):
     config.enable_chatgpt = task_config.chatgpt
     config.output_dir = task_config.output_dir
     config.enable_reinforcement_learning = task_config.rl
-    config.enable_sequence = task_config.sequence
-    config.enable_instance = task_config.instance
     fuzzer = Fuzzer(odg, config)
 
     # setup fuzzer
@@ -138,5 +134,5 @@ def list_folder_extract_yaml_files(folder_path: str):
 
 
 if __name__ == "__main__":
-    list_folder_extract_yaml_files("./chatgpt_plugin/api_doc")
-    # main()
+    # list_folder_extract_yaml_files("./chatgpt_plugin/api_doc")
+    main(args)

@@ -33,12 +33,12 @@ class SequenceConverter:
         self.request_session = requests.Session()
 
     def _generate_random_data(
-        self,
-        method_index: int,
-        method: Method,
-        sequence: Sequence,
-        response_list: List[Response],
-        last_response: Response,
+            self,
+            method_index: int,
+            method: Method,
+            sequence: Sequence,
+            response_list: List[Response],
+            last_response: Response,
     ) -> Any:
         generated_value_tuple_list: List[Tuple[Parameter, Any]] = []
         reference_result_list: List[ReferenceValueResult] = []
@@ -61,8 +61,8 @@ class SequenceConverter:
                     dependency.parameter_dependency.producer_parameter
                 )
                 if (
-                    producer_attribute.attribute_path
-                    not in producer_response.response_body_value_map
+                        producer_attribute.attribute_path
+                        not in producer_response.response_body_value_map
                 ):
                     continue
 
@@ -133,12 +133,14 @@ class SequenceConverter:
             raise e
         else:
             response.text = raw_response.text
+            response.headers = raw_response.headers
             if method in self.fuzzer.never_success_method_set:
                 a = 1
             try:
                 response.parse_response(raw_response)
             except Exception as e:  # returned value format not correct
-                logger.error(f"Error when parsing response: {e}, {raw_response.text}")
+                # logger.error(f"Error when parsing response: {e}, {raw_response.text}")
+                pass
         return response
 
     def convert(self, sequence: Sequence) -> Sequence:
@@ -195,9 +197,62 @@ class SequenceConverter:
         )
         return result
 
-    def request_chatgpt_single_instance(self, request: Request):
+    def _do_chatgpt_request(self, method: Method, request: Request, session: requests.Session) -> Response:
+        request_actor = getattr(session, method.method_type.value)
+        url = request.url
+        response: Response = Response()
+        response.request = request
+        response.method = method
+
+        # do request
         try:
-            response = self._do_request(request.method, request)
+            if isinstance(request.data, bytes):
+                request.headers["Content-Type"] = "application/octet-stream"
+                raw_response: requests.Response = request_actor(
+                    url,
+                    params=request.params,
+                    data=request.data,
+                    headers=request.headers,
+                    files=request.files,
+                    allow_redirects=False,
+                    timeout=30,
+                )
+            else:
+                raw_response: requests.Response = request_actor(
+                    url,
+                    params=request.params,
+                    data=request.form_data,
+                    json=request.data,
+                    headers=request.headers,
+                    files=request.files,
+                    allow_redirects=False,
+                    timeout=30,
+                )
+        except requests.exceptions.ReadTimeout as err:
+            logger.error(err)
+            response.status_code = ResponseCustomizedStatusCode.TIMEOUT.value
+        except Exception as e:  # probably an encoding error
+            raise e
+        else:
+            response.text = raw_response.text
+            response.headers = raw_response.headers
+            if method in self.fuzzer.never_success_method_set:
+                a = 1
+            try:
+                response.parse_response(raw_response)
+            except Exception as e:  # returned value format not correct
+                # logger.error(f"Error when parsing response: {e}, {raw_response.text}")
+                pass
+        return response
+
+    def request_chatgpt_single_instance(self, method: Method, request_url: str, request_data: Dict[str, Any],
+                                        session: requests.Session) -> Response:
+        request: Request = Request()
+        request.method = method
+        request.url = request_url
+        request.data = request_data
+        try:
+            response = self._do_chatgpt_request(request.method, request, session)
         except Exception as e:
             logger.error(f"Error when requesting ChatGPT instance: {e}, {request}")
             return
@@ -207,3 +262,4 @@ class SequenceConverter:
 
         self.fuzzer._on_request_response(None, request, response)
         self.fuzzer._on_sequence_end(None, [request], [response])
+        return response

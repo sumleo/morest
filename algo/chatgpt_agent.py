@@ -2,381 +2,267 @@ import ast
 import copy
 import dataclasses
 import json
+import re
+
+import requests
+import yaml
 import queue
 import re
 import threading
 from typing import Any, Callable, Dict, List, Set, Tuple
-
+import sys
 import loguru
 
 from constant.chatgpt_config import ChatGPTCommandType
 from model.method import Method
-from model.request_response import Request
+from model.request_response import Request, Response
 from util.chatgpt import ChatGPT
+import concurrent.futures
 
 logger = loguru.logger
 
 
-@dataclasses.dataclass
-class ChatGPTCommand:
-    command: ChatGPTCommandType = None
+class APIRequester:
+    def __init__(self, fuzzer: "Fuzzer", target_method: Method):
+        self.fuzzer: "Fuzzer" = fuzzer
+        self.target_method: Method = target_method
+        self.chatgpt: ChatGPT = ChatGPT()
 
-    def execute(self, agent: "ChatGPTAgent") -> Any:
-        pass
+    def _assemble_method_list(self, method_list: List[Method]) -> str:
+        method_str_list: List[str] = [f"- {method.method_type.value.upper()} {method.method_path} {method.description}"
+                                      for method in method_list]
+        return "".join(method_str_list)
+
+    def extract_api_info(self, text):
+        # Define the regular expression pattern to match the API method and path
+        pattern = r'(?P<method>GET|POST|PUT|DELETE|PATCH｜OPTIONS|HEAD)\s+(?P<path>/\S+)'
+
+        # Use re.findall() to find all occurrences of the pattern in the input text
+        matches = re.findall(pattern, text)
+
+        # Extract API method and path from each match
+        api_info_list = [(match[0], match[1]) for match in matches]
+
+        return api_info_list
+
+    def _api_planner(self):
+        prompt = f"""You are a planner that plans a sequence of API calls to request a target API.
+
+You should:
+1) if yes, generate a plan of API calls and say what they are doing step by step.
+
+You should only use API endpoints documented below ("Endpoints you can use:").
+Sometimes the target API can be resolved in a single API call, but some will require several API calls.
+The plan will be passed to an API controller that can format it into web requests and return the responses.
+
+----
+
+Here are some examples:
+
+Fake endpoints for examples:
+GET /user to get information about the current user
+GET /products/search search across products
+POST /users/{"{id}"}/cart to add products to a user's cart
+
+Usery query: I need to find the right API calls to call the api: POST /users/{"{id}"}/cart
+Plan: 1. GET /products/search to search for couches
+2. GET /user to find the user's id
+3. POST /users/{"{id}"}/cart to add a couch to the user's cart
+
+----
+
+Here are endpoints you can use. Do not reference any of the endpoints above.
+
+{self._assemble_method_list(list(self.fuzzer.operation_id_to_method_map.values()))}
+
+----
+
+User query: I need to find the right API calls to call the api: {f"{self.target_method.method_type.value.upper()} {self.target_method.method_path}"}
+Plan:
+        """
+        raw_response = self.chatgpt.send_message(prompt)
+        logger.info(
+            f'{"=" * 20} api_planner: {self.target_method.method_type.value} {self.target_method.method_path} {"=" * 20}')
+        logger.info(f"raw response: {raw_response}")
+        api_sequence: List[Tuple[str, str]] = self.extract_api_info(raw_response)
+        logger.info(f'extract api sequence from response: {api_sequence}')
+        method_sequence: List[Method] = [self.fuzzer.chatgpt_operation_id_to_method_map[f'{method[0]}{method[1]}'] for
+                                         method in api_sequence]
+        return method_sequence, raw_response
+
+    def _get_method_list_description(self, method_list: List[Method]):
+        method_doc_description_str = ""
+        for method in method_list:
+            method_doc_dict = {
+                "description": method.description,
+                "parameters": method.method_raw_body.get("parameters", method.method_raw_body.get("requestBody", [])),
+                "responses": method.method_raw_body.get("responses", {}).get("200", [])
+            }
+            method_doc_description_str += f"""
+== Docs for {method.method_type.value.upper()} {method.method_path} ==
+{yaml.dump(method_doc_dict)}
+        """
+        return method_doc_description_str
+
+    def _generate_parameter_value(self, api_doc: str, plan: str, thought: str):
+        prompt = f"""You are an agent that gets a sequence of API calls and given their documentation, should execute them and return the final response. Do not generate observations and only generate one Action and one Action Input.
+If you cannot complete them and run into issues, you should explain the issue. If you're able to resolve an API call, you can retry the API call. When interacting with API objects, you should extract ids for inputs to other API calls but ids and names for outputs returned to the User.
+
+Here is documentation on the API:
+Base url: {self.fuzzer.config.url}
+Endpoints:
+{api_doc}
 
 
-@dataclasses.dataclass
-class CommandResponse:
-    command: ChatGPTCommand = None
-    result: Any = None
+Here are tools to execute requests against the API: requests_get_head_options: Use this to GET/HEAD/OPTIONS content from a website.
+Input to the tool should be a json string with 2 keys: "url" and "output_instructions".
+The value of "url" should be a string. The value of "output_instructions" should be instructions on what information to extract from the response, for example the id(s) for a resource(s) that the GET request fetches.
+
+requests_post_put_patch: Use this when you want to POST/PUT/PATCH to a website.
+Input to the tool should be a json string with 3 keys: "url", "data", and "output_instructions".
+The value of "url" should be a string.
+The value of "data" should be a dictionary of key-value pairs you want to POST/PUT/PATCH to the url.
+The value of "summary_instructions" should be instructions on what information to extract from the response, for example the id(s) for a resource(s) that the  POST/PUT/PATCH request creates.
+Always use double quotes for strings in the json string.
+Always make the json string use a json code fragment.
 
 
-@dataclasses.dataclass
-class GenerateSequenceFromMethodListCommand(ChatGPTCommand):
-    command: ChatGPTCommandType = ChatGPTCommandType.GENERATE_SEQUENCE
-    method_list: List[Method] = dataclasses.field(default_factory=list)
+Starting below, you should follow this format:
 
-    def execute(self, agent: "ChatGPTAgent"):
-        if not agent.fuzzer.config.enable_sequence:
-            return None
-        raw_sequence = agent._generate_sequence_from_method_list(self.method_list)
-        if raw_sequence is None:
-            return None
-        return agent.parse_raw_sequence(raw_sequence)
+Plan: the plan of API calls to execute
+Thought: you should always think about what to do
+Action: the action to take, should be one of the tools [requests_get_head_options, requests_post_put_patch]
+Action Input: the input to the action
+Observation: the output of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I am finished executing the plan (or, I cannot finish executing the plan without knowing some other information.)
+Final Answer: the final output from executing the plan or missing information I'd need to re-plan correctly.
 
 
-@dataclasses.dataclass
-class GenerateSequenceForFailedMethodListCommand(ChatGPTCommand):
-    command: ChatGPTCommandType = ChatGPTCommandType.GENERATE_SEQUENCE
-    success_method_list: List[Method] = dataclasses.field(default_factory=list)
-    failed_method_list: List[Method] = dataclasses.field(default_factory=list)
+Begin!
 
-    def execute(self, agent: "ChatGPTAgent"):
-        if not agent.fuzzer.config.enable_sequence:
-            return None
-        raw_sequence = agent._generate_sequence_from_method_list(self.method_list)
-        if raw_sequence is None:
-            return None
-        return agent.parse_raw_sequence(raw_sequence)
+Plan: {plan}
+Thought: {thought}
+"""
+        raw_response = self.chatgpt.send_message(prompt)
+        logger.info(
+            f'{"=" * 20} generate_parameter_value: {self.target_method.method_type.value} {self.target_method.method_path} {"=" * 20}')
+        logger.info(f"raw response: {raw_response}")
+        return raw_response, prompt
+
+    def parsing_parameter_value(self, raw_response: str):
+
+        # Regular expression to match the action
+        action_pattern = r"Action:\s*(\w+)"
+        # Regular expression to match the action input
+        input_pattern = r"Action Input:\s*(\{.*\})"
+
+        # Find the action
+        action_match = re.search(action_pattern, raw_response)
+        action = action_match.group(1) if action_match else None
+
+        # Find the action input
+        input_match = re.search(input_pattern, raw_response)
+        action_input = json.loads(input_match.group(1)) if input_match else None
+
+        return action, action_input
+
+    def _parse_response(self, response: Response, instructions: str):
+        prompt = f"""Here is an API response and headers: ==Response==\n\n{response.text}\n\n ==Headers==\n\n{"{}"}\n\n====
+Your task is to extract some information according to these instructions: {instructions}
+When working with API objects, you should usually use ids over names. Do not return any ids or names that are not in the response.
+If the response indicates an error, you should instead output a summary of the error.
+
+Output:"""
+        raw_response = self.chatgpt.send_message(prompt)
+        return raw_response
+
+    def run(self):
+        # check if target method is success
+        if self.target_method not in self.fuzzer.never_success_method_set:
+            return
+
+        method_sequence, plan = self._api_planner()
+        doc_description = self._get_method_list_description(method_sequence)
+        thought = ""
+        session = requests.Session()
+        for method in method_sequence:
+            # check if target method is success
+            if self.target_method not in self.fuzzer.never_success_method_set:
+                return
+
+            # generate parameter value
+            raw_response, prompt = self._generate_parameter_value(doc_description, plan, thought)
+
+            # get action and action input
+            action, action_input = self.parsing_parameter_value(raw_response)
+
+            # if failed to parsing then return
+            if not action or not action_input:
+                return
+
+            # execute action
+            request_url: str = action_input.get("url")
+            request_data: Dict[str, Any] = action_input.get("data")
+            response: Response = self.fuzzer.sequence_converter.request_chatgpt_single_instance(method, request_url,
+                                                                                                request_data, session)
+            # if not success then return
+            if response.status_code > 300:
+                return
+
+            if method == self.target_method:
+                logger.info(f"target method: {method.signature} response: {response.text}")
+
+            # get instruction
+            instruction = action_input.get("output_instructions", None) or action_input.get("summary_instructions", None)
+
+            # if no instruction then return
+            if instruction is None:
+                return
+
+            # parse response
+            parsed_response = self._parse_response(response, instruction)
+            thought += f"{raw_response}\nObservation: {parsed_response}\nThought: "
 
 
-@dataclasses.dataclass
-class GeneratePlainInstanceFromMethodDocCommand(ChatGPTCommand):
-    command: ChatGPTCommandType = ChatGPTCommandType.GENERATE_PLAIN_INSTANCE
-    method_list: List[Method] = dataclasses.field(default_factory=list)
 
-    def execute(self, agent: "ChatGPTAgent"):
-        if not agent.fuzzer.config.enable_instance:
-            return None
-        raw_response = agent._generate_request_instance_by_openapi_document(
-            self.method_list
-        )
-        if raw_response is None:
-            return None
-        return agent._parse_request_instance_from_chatgpt_result(raw_response)
+
+EXECUTOR_NUMBER = 3
 
 
 class ChatGPTAgent:
     def __init__(self, fuzzer: "Fuzzer"):
         self.fuzzer: "Fuzzer" = fuzzer
-        self.chatgpt: ChatGPT = ChatGPT()
-        self.has_pending_method_instance_generation: bool = False
-        self.init_prompt: str = """
-As an experienced and knowledgeable tester of RESTful APIs, your task is to thoroughly test the API using the OpenAPI/Swagger documents provided. You are responsible for identifying any missing or incorrect information in the documentation, fixing the issues, and generating test cases that cover all the functionalities of the API. Additionally, you need to identify parameter dependencies in different API/Operation/Method(s) and update the OpenAPI/Swagger documents to reflect the dependencies.
+        self.task_queue: queue.Queue = queue.Queue()
+        self.consumers: List[Callable] = [self._execute_api_requester] * EXECUTOR_NUMBER
+        self.executor: concurrent.futures.ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=EXECUTOR_NUMBER)
+        self.future_list: List[concurrent.futures.Future] = []
+        threading.Thread(target=self.execute).start()
 
-To complete this task, you should use your knowledge of testing, software engineering, and other relevant factors to develop a testing strategy that covers all aspects of the API. This should include functional testing, boundary testing, security testing, and performance testing. You will also need to execute the test cases using various tools such as Postman or a custom testing framework and log the results.
-
-As part of the testing process, you should review the OpenAPI/Swagger documents to ensure that they accurately reflect the API's structure, endpoints, and parameters. If any issues are found, you should update the documentation to fix them. Additionally, you should identify parameter dependencies in different API/Operation/Method(s) and document them in the OpenAPI/Swagger documents.
-
-Overall, your goal is to ensure that the RESTful API is thoroughly tested and that the OpenAPI/Swagger documents are accurate and up-to-date. For this message, you just need to reply `OK` to continue.
-        """
-        self.sequence_generation_prompt: str = """
-You have been provided with a set of RESTful APIs in the OpenAPI/Swagger format. Each API is represented by the following format: api_name: method_name: path (api_summary) (api_description). For example, an API named create_user with a POST method and the path /api/v1/users, along with a summary of "Create a user" and a description of "Create a user with the given user name" would be described as create_user: POST: /api/v1/users (Create a user) (Create a user with the given user name).
-
-Your task is to generate a series of valid test cases for these APIs, where each test case should call multiple APIs but not exceed 5 APIs. You must guarantee that the test cases are logically correct and do not violate any constraints or requirements specified in the API documentation.
-
-To begin, please produce at least 20 test cases using the following format:
-
-```
-TEST_CASE: API1 -> API2 -> API3 -> ... -> API5
-```
-
-The format should be followed strictly.
-
-As you generate your test cases, consider the various HTTP methods that are supported by the APIs, including GET, POST, PUT, and DELETE. Additionally, consider any possible status codes that can be returned by each API, as well as any expected error messages. Finally, be sure to validate any input parameters, such as query parameters, headers, and request bodies, to ensure that the APIs are behaving as expected.
-
-Please note that your test cases must be logically sound, complete and free of errors, as they will be used to test the functionality of the RESTful APIs.
-
-You must not include any conclusion, explanation and purpose.
-
-You must only output testcases.
-
-The testcases must follow the format above.
-
-The APIs are listed below:
-
-        """
-
-        self.batch_input_prompt: str = """
-        Due to token limit, you just need to reply `OK` to continue until I ask you questions.
-        """
-
-        self.generate_instance_chunk_size = 8
-
-        self.plain_instance_generation_prompt: str = """
-You have been provided with the OpenAPI/Swagger documentation for several RESTful APIs. Your task is to create a request instance for each API, following the format below, which will be used as arguments for Python's requests library:
-
-```json
-{
-    "path": <path>,
-    "params": <params>,
-    "form_data": <form_data>,
-    "json_data": <json_data>,
-    "headers": <headers>,
-    "files": <files>
-    "operation_id": <operation_id>
-}
-```
-
-Construct individual JSON schema request instances for each API, taking into account ChatGPT's output limitations. Each request instance should begin with REQUEST_INSTANCE: in one line, followed by the JSON schema, such as REQUEST_INSTANCE: {"path": {"petId": 1}}. Avoid potential parameter value conflict in these request instances. For instance, you can not create two users with same `user_id`.
-
-Note that the different fields in the request instance are optional and may not be present for all APIs. Here's a brief description of each field:
-
-path: (optional) Path variables of the request.
-params: (optional) Dictionary, list of tuples, or bytes to send in the query string for the request.
-form_data: (optional) Dictionary, list of tuples, bytes, or file-like object to send in the body of the request as form-data.
-json_data: (optional) A JSON serializable Python object to send in the body of the request.
-headers: (optional) Dictionary of HTTP headers to send with the request.
-files: (optional) Dictionary of 'name': file-like-objects (or {'name': file-tuple}) for multipart encoding upload. The file-like objects must use `"<file-placeholder>"` as the place holder.
-operation_id: (required) The operation ID in OpenAPI/Swagger documentation.
-
-Please do not include any explanation or descriptions in your request instances. 
-
-Please generate valid API request instances for the following APIs, using the provided API documentation as a reference. Analyze the descriptions, requirements, and constraints for each API to ensure the request instances adhere to the specified guidelines. 
-
-Each request instance must a valid json in one line.
-
-
-        """
-        self.command_queue: queue.Queue = queue.Queue()
-        self.command_response_queue: queue.Queue = queue.Queue()
-        self.command_response_handler_map: Dict[
-            ChatGPTCommandType, Callable[[CommandResponse], None]
-        ] = {
-            ChatGPTCommandType.GENERATE_SEQUENCE: self._handle_generate_sequence_response,
-            ChatGPTCommandType.GENERATE_PLAIN_INSTANCE: self._handle_generate_plain_instance_response,
-        }
-        self.worker_thread: threading.Thread = threading.Thread(
-            target=self._execute_command_worker,
-            daemon=True,
-            name="ChatGPTAgentWorker",
-            args=(self.command_queue, self.command_response_queue),
-        )
-        # start worker thread
-        self.worker_thread.start()
-
-    def generate_sequence_from_method_list(self, method_list: List[Method]) -> str:
-        logger.info("generate sequence from method list")
-        generate_sequence_command = GenerateSequenceFromMethodListCommand(
-            method_list=method_list
-        )
-        self.execute_command(generate_sequence_command)
-
-    def execute_command(self, command: ChatGPTCommand):
-        self.command_queue.put(command)
-
-    def _execute_command_worker(
-            self, command_queue: queue.Queue, command_response_queue: queue.Queue
-    ):
-        logger.info("start command worker")
-        has_task = False
+    def consumer(self, task):
         while True:
-            if has_task:
-                continue
+            if not self.task_queue.empty():
+                data = self.task_queue.get()
+                try:
+                    task(data)
+                except Exception as e:
+                    logger.error(e)
 
-            # Wait for a task to become available
-            command = command_queue.get()
+    def check_exception(self) -> bool:
+        for future in self.futures:
+            if future.exception():
+                logger.info(f"An exception occurred: {future.exception()}")
+                sys.exit(1)
 
-            # Indicate that a task is available
-            has_task = True
+    def _execute_api_requester(self, target_method: Method):
+        logger.info(f"execute api requester for {target_method.signature}")
+        requester = APIRequester(self.fuzzer, target_method)
+        requester.run()
 
-            # Execute time-consuming task
-            raw_result = command.execute(self)
-
-            # Generate command response
-            command_response = CommandResponse(command=command, result=raw_result)
-
-            # Notify main thread with result
-            command_response_queue.put(command_response)
-
-            # Indicate that the task is complete
-            has_task = False
-
-    def _generate_sequence_from_method_list(self, method_list: List[Method]) -> str:
-        logger.info("generate sequence from method list")
-        prompt: str = self.sequence_generation_prompt
-        for method in method_list:
-            prompt += f"{method.operation_id}: {method.method_type.value}: {method.method_path} ({method.summary}) ({method.description})\n"
-        result = self.chatgpt.send_message(prompt)
-        return result
-
-    def _generate_sequence_for_failed_method_list(
-            self, success_method_list: List[Method], failed_method_list: List[Method]
-    ) -> str:
-        logger.info("generate sequence for failed method list")
-        prompt: str = self.sequence_generation_prompt
-        for method in failed_method_list + success_method_list:
-            prompt += f"{method.operation_id}: {method.method_type.value}: {method.method_path} ({method.summary}) ({method.description})\n"
-        result = self.chatgpt.send_message(prompt)
-        return result
-
-    def parse_raw_sequence(self, raw_text: str) -> List[List[str]]:
-        test_case_list: List[List[str]] = []
-        for line in raw_text.splitlines():
-            if "TEST_CASE:" in line:
-                token_list = line.split("TEST_CASE: ")[1].split(" -> ")
-                token_list = [token.strip() for token in token_list]
-                test_case_list.append(token_list)
-        return test_case_list
-
-    def _generate_request_instance_by_openapi_document(self, method_list: List[Method]):
-        """
-        Generate a request instance following the OpenAPI document.
-
-        :param api_document:
-        :return:
-        """
-        api_document = ""
-        for method in method_list:
-            raw_body = copy.deepcopy(method.method_raw_body)
-            if "responses" in raw_body:
-                del raw_body["responses"]
-            api_fragment = {method.method_path: raw_body}
-            api_document += f"{api_fragment}\n"
-        prompt: str = f"""
-        {self.plain_instance_generation_prompt}
-        
-        {api_document}
-        
-        """
-        result = self.chatgpt.send_message(prompt)
-        return result
-
-    def _generate_request_instance_sequence_by_openapi_document(
-            self, method_list: List[Method]
-    ):
-        """
-        Generate a request instance following the OpenAPI document.
-
-        :param api_document:
-        :return:
-        """
-        api_document = ""
-        for method in method_list:
-            api_document += f"{method.method_raw_body}\n"
-
-        prompt: str = f"""
-         Generate an request instance for a test case following the OpenAPI document for each method in the test case:
-
-         {api_document}
-
-         The generated request instance is formatted as separate JSON data for each method. Use the attribute `query` to store the query parameters, `header` to store the header parameters, `path` to store the path parameters, `body` to store the body parameters, and `formData` to store the form data parameters. The generated instance must be in the same order as the methods in the test case and follow the potential parameter dependencies between the methods in the test case.
-
-
-         """
-        result = self.chatgpt.send_message(prompt)
-        return result
-
-    def generate_request_instance_by_openapi_document(self, method_list: List[Method]):
-        if self.has_pending_method_instance_generation:
-            return
-        chunk_method_list = []
-        for method in method_list:
-            chunk_method_list.append(method)
-            self.has_pending_method_instance_generation = True
-            if len(chunk_method_list) >= self.generate_instance_chunk_size:
-                command = GeneratePlainInstanceFromMethodDocCommand()
-                command.method_list = chunk_method_list
-                self.command_queue.put(command)
-                chunk_method_list = []
-
-        if len(chunk_method_list) > 0:
-            command = GeneratePlainInstanceFromMethodDocCommand()
-            command.method_list = chunk_method_list
-            self.command_queue.put(command)
-
-    def generate_test_case_and_instance_containing_never_success_method(
-            self, method_list: List[Method]
-    ):
-        if self.has_pending_method_instance_generation:
-            return
-
-    def command_response_handler(self, response: CommandResponse):
-        handler = self.command_response_handler_map.get(response.command.command)
-        handler(response)
-
-    def _parse_request_instance_from_chatgpt_result(self, result: str) -> List[str]:
-        instance_list = []
-        for line in result.splitlines():
-            if "REQUEST_INSTANCE:" in line:
-                instance = line.split("REQUEST_INSTANCE:")[1]
-                instance_list.append(instance)
-        return instance_list
-
-    def _handle_generate_plain_instance_response(self, response: CommandResponse):
-        instance_list = response.result
-        self.has_pending_method_instance_generation = False
-        if instance_list is None:
-            logger.error("Failed to generate instance")
-            return
-        for instance_list_item in instance_list:
-            try:
-                value_dict: dict = json.loads(instance_list_item)
-            except Exception as ex:
-                logger.error(f"Failed to parse instance: {instance_list_item}")
-                continue
-            self._update_file_like_object_from_instance(value_dict)
-            operation_id: str = value_dict.get("operation_id", None)
-            method: Method = self.fuzzer.operation_id_to_method_map[operation_id]
-            url = method.method_path
-            path_variable_dict = value_dict.get("path", {})
-            if isinstance(path_variable_dict, dict):
-                for key, value in path_variable_dict.items():
-                    url = url.replace("{" + key + "}", str(value))
-            request = Request()
-            request.method = method
-            request.url = url
-            request.params = value_dict.get("params", None)
-            request.form_data = value_dict.get("form_data", None)
-            request.data = value_dict.get("json_data", None)
-            request.headers = value_dict.get("headers", None)
-            files = value_dict.get("files", None)
-            request.files = files
-            self.fuzzer.pending_request_list.append(request)
-
-    def _update_file_like_object_from_instance(self, instance: Any):
-        placeholder = "<file-placeholder>"
-        if isinstance(instance, dict):
-            for key, value in instance.items():
-                if value == placeholder:
-                    instance[key] = open("./assets/smallest.jpg", "rb")
-                else:
-                    self._update_file_like_object_from_instance(value)
-        elif isinstance(instance, list):
-            for item in instance:
-                self._update_file_like_object_from_instance(item)
-
-    def _handle_generate_sequence_response(self, response: CommandResponse):
-        raw_sequence_list = response.result
-        if raw_sequence_list is None:
-            logger.error("Failed to generate sequence")
-            return
-        sequence_list = self.fuzzer.graph.generate_sequence_by_chatgpt(
-            raw_sequence_list
-        )
-        self.fuzzer.pending_sequence_list = sequence_list
-
-    def process_chatgpt_result(self):
-        while not self.command_response_queue.empty():
-            response = self.command_response_queue.get()
-            self.command_response_handler(response)
+    def execute(self):
+        for task in self.consumers:
+            future = self.executor.submit(self.consumer, task)
+            self.future_list.append(future)
+        # add exception checker
+        self.future_list.append(self.executor.submit(self.check_exception))

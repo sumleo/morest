@@ -38,6 +38,8 @@ class StatisticAnalysis(Analysis):
         if 200 <= response.status_code < 300:
             self.total_success_count += 1
             self.total_success_method_set.add(request.method)
+            if request.method in self.fuzzer.never_success_method_set:
+                self.fuzzer.never_success_method_set.remove(request.method)
 
         if 600 > response.status_code >= 500:
             self.total_failed_method_set.add(request.method)
@@ -46,10 +48,10 @@ class StatisticAnalysis(Analysis):
 
     def on_iteration_end(self):
         total_method_success_rate: float = (
-            len(self.total_success_method_set) / self.total_method_count
+                len(self.total_success_method_set) / self.total_method_count
         )
         total_method_failed_rate: float = (
-            len(self.total_failed_method_set) / self.total_method_count
+                len(self.total_failed_method_set) / self.total_method_count
         )
         total_validate_rate: float = self.total_success_count / self.total_request_count
 
@@ -70,9 +72,9 @@ class StatisticAnalysis(Analysis):
 
         # list methods which are neither success nor failed
         invalid_method_set = (
-            set(self.method_list)
-            - self.total_success_method_set
-            - self.total_failed_method_set
+                set(self.method_list)
+                - self.total_success_method_set
+                - self.total_failed_method_set
         )
         logger.info(f"Total invalid method count: {len(invalid_method_set)}")
         for method in invalid_method_set:

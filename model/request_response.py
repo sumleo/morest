@@ -40,6 +40,7 @@ class Response:
     method: Method = None
     request: Request = None
     text: str = None
+    headers: Dict[str, Any] = dataclasses.field(default_factory=dict)
     response_header_value_map: Dict[str, ParameterAttribute] = dataclasses.field(
         default_factory=dict
     )
