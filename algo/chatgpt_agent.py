@@ -246,12 +246,14 @@ class ChatGPTAgent:
         if not self.fuzzer.config.enable_chatgpt:
             logger.info("chatgpt disabled")
             return
+
         while True:
+            # check if time budget is reached
+            if self.fuzzer.begin_time + self.fuzzer.time_budget < time.time():
+                logger.info(f"time budget reached: {self.fuzzer.time_budget}s")
+                return
+
             if not self.task_queue.empty():
-                # check if time budget is reached
-                if self.fuzzer.begin_time + self.fuzzer.time_budget < time.time():
-                    logger.info(f"time budget reached: {self.fuzzer.time_budget}s")
-                    return
                 data = self.task_queue.get()
                 try:
                     task(data)
