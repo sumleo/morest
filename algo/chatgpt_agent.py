@@ -248,7 +248,7 @@ class ChatGPTAgent:
 
                 # disable chatgpt
                 if not self.fuzzer.config.enable_chatgpt:
-                    continue
+                    return
                 # check if time budget is reached
                 if self.fuzzer.begin_time + self.fuzzer.time_budget < time.time():
                     logger.info(f"time budget reached: {self.fuzzer.time_budget}s")
