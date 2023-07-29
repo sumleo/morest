@@ -53,7 +53,7 @@ class Fuzzer:
         self._init_analysis()
         self.single_method_sequence_list = self.graph._generate_single_method_sequence()
         self.sequence_list = (
-                self.single_method_sequence_list + self.graph._generate_sequence()
+                self.single_method_sequence_list + self.graph.generate_sequence()
         )
         self.pending_sequence_list = self.sequence_list.copy()
 
