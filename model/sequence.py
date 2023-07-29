@@ -29,7 +29,7 @@ class Sequence:
         self.method_sequence.append(method)
 
     def add_parameter_dependency(
-        self, parameter_dependency: InContextParameterDependency
+            self, parameter_dependency: InContextParameterDependency
     ):
         consumer_index = parameter_dependency.consumer_index
         producer_index = parameter_dependency.producer_index
@@ -56,12 +56,10 @@ class Sequence:
 
     def copy(self):
         seq = Sequence()
-        seq.method_sequence = copy.deepcopy(self.method_sequence)
-        seq.parameter_dependency_list = copy.deepcopy(self.parameter_dependency_list)
-        seq.consumer_index_to_dependency_map = copy.deepcopy(
-            self.consumer_index_to_dependency_map
-        )
-        seq.producer_index_to_dependency_map = copy.deepcopy(
-            self.producer_index_to_dependency_map
-        )
+        seq.method_sequence = [method for method in self.method_sequence]
+        seq.parameter_dependency_list = [dep for dep in self.parameter_dependency_list]
+        seq.consumer_index_to_dependency_map = {key: value for key, value in
+                                                self.consumer_index_to_dependency_map.items()}
+        seq.producer_index_to_dependency_map = {key: value for key, value in
+                                                self.producer_index_to_dependency_map.items()}
         return seq

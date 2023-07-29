@@ -104,7 +104,7 @@ def main(task_config: TaskConfig):
     fuzzer.warm_up()
 
     # start fuzzing
-    fuzzer.fu-zz()
+    fuzzer.fuzz()
 
 
 def list_folder_extract_yaml_files(folder_path: str):

@@ -6,7 +6,7 @@ logger = loguru.logger
 
 
 def reason_type(
-    producer_attribute: ParameterAttribute, consumer_attribute: ParameterAttribute
+        producer_attribute: ParameterAttribute, consumer_attribute: ParameterAttribute
 ):
     # type is not the same
     if producer_attribute.parameter_type != consumer_attribute.parameter_type:
@@ -31,7 +31,6 @@ def reason_type(
     # check minimum
     if producer_attribute.schema_info.minimum != consumer_attribute.schema_info.minimum:
         return False
-
     logger.info(
         f"producer {producer_attribute.attribute_path} == consumer {consumer_attribute.attribute_path}"
     )
