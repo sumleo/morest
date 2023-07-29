@@ -242,6 +242,7 @@ class ChatGPTAgent:
         threading.Thread(target=self.execute).start()
 
     def consumer(self, task):
+        return
         # disable chatgpt
         if not self.fuzzer.config.enable_chatgpt:
             logger.info("chatgpt disabled")
