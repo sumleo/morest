@@ -212,6 +212,7 @@ Output:"""
 
             if method == self.target_method:
                 logger.info(f"target method: {method.signature} response: {response.text}")
+                return
 
             # get instruction
             instruction = action_input.get("output_instructions", None) or action_input.get("summary_instructions", None)
