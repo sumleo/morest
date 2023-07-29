@@ -12,6 +12,7 @@ import threading
 from typing import Any, Callable, Dict, List, Set, Tuple
 import sys
 import loguru
+import time
 
 from constant.chatgpt_config import ChatGPTCommandType
 from model.method import Method
@@ -228,7 +229,7 @@ Output:"""
 
 
 
-EXECUTOR_NUMBER = 3
+EXECUTOR_NUMBER = 2
 
 
 class ChatGPTAgent:
@@ -244,6 +245,14 @@ class ChatGPTAgent:
     def consumer(self, task):
         while True:
             if not self.task_queue.empty():
+
+                # disable chatgpt
+                if not self.fuzzer.config.enable_chatgpt:
+                    continue
+                # check if time budget is reached
+                if self.fuzzer.begin_time + self.fuzzer.time_budget > time.time():
+                    logger.info(f"time budget reached: {self.fuzzer.time_budget}s")
+                    return
                 data = self.task_queue.get()
                 try:
                     task(data)
@@ -266,4 +275,4 @@ class ChatGPTAgent:
             future = self.executor.submit(self.consumer, task)
             self.future_list.append(future)
         # add exception checker
-        self.future_list.append(self.executor.submit(self.check_exception))
+        # self.future_list.append(self.executor.submit(self.check_exception))

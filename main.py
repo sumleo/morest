@@ -19,13 +19,12 @@ import yaml
 import json
 import os
 
-
-yaml_path = "pet-test.json"
+yaml_path = "specifications/openapi/rest-countries.yaml"
 parser = argparse.ArgumentParser()
 parser.add_argument("--yaml_path", type=str, default=yaml_path)
 parser.add_argument("--time_budget", type=float, default=600)
 parser.add_argument("--warm_up_times", type=int, default=5)
-parser.add_argument("--url", type=str, default="https://petstore3.swagger.io/api/v3")
+parser.add_argument("--url", type=str, default="https://restcountries.com")
 parser.add_argument("--chatgpt", type=bool, default=True)
 parser.add_argument("--output_dir", type=str, default="output")
 parser.add_argument("--rl", type=bool, default=True)
@@ -41,6 +40,7 @@ def default_reclimit_handler(limit, parsed_url, recursions=()):
         "type": "object",
     }
 
+
 def load_specification(file_path: str):
     if file_path.endswith(".yaml"):
         return yaml.load(open(file_path, "r"), Loader=yaml.FullLoader)
@@ -53,7 +53,7 @@ def load_specification(file_path: str):
 def parsing(api_document_path: str) -> List[API]:
     url = absurl(api_document_path, abspath(os.getcwd()))
     specification = load_specification(api_document_path)
-    resolver = RefResolver(specification, url, default_reclimit_handler = default_reclimit_handler)
+    resolver = RefResolver(specification, url, default_reclimit_handler=default_reclimit_handler)
     resolver.resolve_references()
     # parser = prance.ResolvingParser(
     #     api_document_path,
@@ -85,7 +85,7 @@ def main(task_config: TaskConfig):
     # build odg
     odg = OperationDependencyGraph(apis)
     odg.build()
-    graph = odg.generate_graph()
+    # graph = odg.generate_graph()
 
     # init fuzzer
     config = FuzzerConfig()
@@ -104,7 +104,7 @@ def main(task_config: TaskConfig):
     fuzzer.warm_up()
 
     # start fuzzing
-    fuzzer.fuzz()
+    fuzzer.fu-zz()
 
 
 def list_folder_extract_yaml_files(folder_path: str):
@@ -114,25 +114,41 @@ def list_folder_extract_yaml_files(folder_path: str):
     count = 0
     error_count = 0
     valid_doc_count = 0
+    yaml_summary_list = []
     for yaml_file_absolute_path in yaml_file_absolute_path_list:
         try:
             loguru.logger.info(f"parsing {yaml_file_absolute_path}")
-            apis = parsing(yaml_file_absolute_path)
-            count += len(apis)
-            valid_doc_count += 1
-            # copy valid doc to another folder
-            shutil.copy(
+            # apis = parsing(yaml_file_absolute_path)
+            # count += len(apis)
+            specification = prance.ResolvingParser(
                 yaml_file_absolute_path,
-                "./valid_chatgpt_plugin_spec/" + yaml_file_absolute_path.split("/")[-1],
+                backend="openapi-spec-validator",
+                recursion_limit_handler=default_reclimit_handler,
+                strict=False,
             )
+            valid_doc_count += 1
+            url = specification.specification["servers"][0]["url"]
+            yaml_file_name = yaml_file_absolute_path.split("/")[-1].split(".")[0]
+            yaml_summary = {
+                "name": yaml_file_name,
+                "path": yaml_file_absolute_path,
+                "url": url
+            }
+            yaml_summary_list.append(yaml_summary)
+            # copy valid doc to another folder
+            # shutil.copy(
+            #     yaml_file_absolute_path,
+            #     "./valid_chatgpt_plugin_spec/" + yaml_file_absolute_path.split("/")[-1],
+            # )
         except Exception as e:
             error_count += 1
             loguru.logger.error(f"error: {e}")
     loguru.logger.info(f"total apis: {count}")
     loguru.logger.info(f"error apis: {error_count}")
     loguru.logger.info(f"valid doc count: {valid_doc_count}")
+    print(yaml_summary_list)
 
 
 if __name__ == "__main__":
-    # list_folder_extract_yaml_files("./chatgpt_plugin/api_doc")
+    # list_folder_extract_yaml_files("./specifications/openapi")
     main(args)
