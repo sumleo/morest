@@ -216,7 +216,8 @@ Output:"""
                 return
 
             # get instruction
-            instruction = action_input.get("output_instructions", None) or action_input.get("summary_instructions", None)
+            instruction = action_input.get("output_instructions", None) or action_input.get("summary_instructions",
+                                                                                            None)
 
             # if no instruction then return
             if instruction is None:
@@ -225,8 +226,6 @@ Output:"""
             # parse response
             parsed_response = self._parse_response(response, instruction)
             thought += f"{raw_response}\nObservation: {parsed_response}\nThought: "
-
-
 
 
 EXECUTOR_NUMBER = 2
@@ -243,12 +242,12 @@ class ChatGPTAgent:
         threading.Thread(target=self.execute).start()
 
     def consumer(self, task):
+        # disable chatgpt
+        if not self.fuzzer.config.enable_chatgpt:
+            logger.info("chatgpt disabled")
+            return
         while True:
             if not self.task_queue.empty():
-
-                # disable chatgpt
-                if not self.fuzzer.config.enable_chatgpt:
-                    return
                 # check if time budget is reached
                 if self.fuzzer.begin_time + self.fuzzer.time_budget < time.time():
                     logger.info(f"time budget reached: {self.fuzzer.time_budget}s")
