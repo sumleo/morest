@@ -148,40 +148,20 @@ class DataGenerator:
             parameter_attribute.schema_info.has_max_length
             and parameter_attribute.schema_info.has_min_length
         ):
-            # min_len = parameter_attribute.schema_info.min_length
-            # max_len = parameter_attribute.schema_info.max_length
-            if hasattr(parameter_attribute.schema_info, 'min_length') and hasattr(parameter_attribute.schema_info,
-                                                                                  'max_length'):
-                min_len = parameter_attribute.schema_info.min_length
-                max_len = parameter_attribute.schema_info.max_length
-            else:
-                # Handle the case where min_length or max_length is not present
-                min_len = 0
-                max_len = 32
+            min_len = parameter_attribute.schema_info.min_length
+            max_len = parameter_attribute.schema_info.max_length
 
-        # if (
-        #     parameter_attribute.schema_info.has_min_length
-        #     and np.random.random() < self.config.violation_string_probability
-        # ):
-        #     max_len = parameter_attribute.schema_info.min_length
         if (
             parameter_attribute.schema_info.has_min_length
             and np.random.random() < self.config.violation_string_probability
         ):
-            if hasattr(parameter_attribute.schema_info, 'min_length'):
-                max_len = parameter_attribute.schema_info.min_length
+            max_len = parameter_attribute.schema_info.min_length
 
-        # elif (
-        #     parameter_attribute.schema_info.has_max_length
-        #     and np.random.random() < self.config.violation_string_probability
-        # ):
-        #     min_len = parameter_attribute.schema_info.max_length
         elif (
             parameter_attribute.schema_info.has_max_length
             and np.random.random() < self.config.violation_string_probability
         ):
-            if hasattr(parameter_attribute.schema_info, 'max_length'):
-                min_len = parameter_attribute.schema_info.max_length
+            min_len = parameter_attribute.schema_info.max_length
 
         if parameter_attribute.schema_info.has_format:
             string_format = parameter_attribute.schema_info.format
@@ -195,9 +175,7 @@ class DataGenerator:
                 res = "testpassword"
                 return res
             elif string_format == "binary":
-                with open("./assets/smallest.jpg", "rb") as file:
-                    return file.read()
-                # return open("./assets/smallest.jpg", "rb").read()
+                return open("./assets/smallest.jpg", "rb").read()
             else:
                 raise Exception("unknown string format", string_format)
 
@@ -370,12 +348,9 @@ class DataGenerator:
         if self._should_use_dependency(parameter_attribute):
             return self._fetch_dependency_value(parameter_attribute)
 
-        # img_path = os.path.join("./assets/smallest.jpg")
-        # file = open(img_path, "rb")
-        # return file
         img_path = os.path.join("./assets/smallest.jpg")
-        with open(img_path, "rb") as file:
-            return file.read()
+        file = open(img_path, "rb")
+        return file
 
     def generate_value(self, parameter_attribute: ParameterAttribute) -> Any:
         # use example

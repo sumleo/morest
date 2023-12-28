@@ -17,13 +17,7 @@ def build_request(method: Method, parameters: List[Tuple[Parameter, Any]]) -> Re
         parameter, val = parameter_pair
         parameter_location = parameter.location
         if parameter_location == ParameterLocation.HEADER:
-            # headers[parameter.name] = val
-            # Check if the parameter is 'Authorization'
-            if parameter.name.lower() == 'authorization':
-                # Ensure the value is a string or bytes
-                headers[parameter.name] = str(val)
-            else:
-                headers[parameter.name] = val
+            headers[parameter.name] = val
         elif parameter_location == ParameterLocation.QUERY:
             params[parameter.name] = val
         elif parameter_location == ParameterLocation.PATH:

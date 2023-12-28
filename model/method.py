@@ -40,10 +40,6 @@ class Method:
         # parse request parameters
         if self.method_raw_body.__contains__("parameters"):
             raw_request_parameters = self.method_raw_body["parameters"]
-            # if no parameters found
-            if raw_request_parameters is None:
-                print("No raw request parameters found.")
-                return
             for raw_request_parameter in raw_request_parameters:
                 parameter_location: ParameterLocation = ParameterLocation(
                     raw_request_parameter["in"]
