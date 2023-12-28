@@ -19,7 +19,7 @@ import yaml
 import json
 import os
 
-yaml_path = "specifications/openapi/rest-countries.yaml"
+yaml_path = "specifications/openapi/scout-api/openapi.yaml"
 parser = argparse.ArgumentParser()
 parser.add_argument("--yaml_path", type=str, default=yaml_path)
 parser.add_argument("--time_budget", type=float, default=600)
