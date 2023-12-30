@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import rstr
+import re
 
 from algo.rl_algorithm import rl_algorithm
 from algo.runtime_dictionary import ReferenceValueResult, RuntimeDictionary
@@ -198,12 +199,21 @@ class DataGenerator:
                 with open("./assets/smallest.jpg", "rb") as file:
                     return file.read()
                 # return open("./assets/smallest.jpg", "rb").read()
+            elif string_format == "date":  # Handle 'date' format
+                res = datetime.datetime.now().strftime("%Y-%m-%d")
+                return res
             else:
                 raise Exception("unknown string format", string_format)
 
         if parameter_attribute.schema_info.has_pattern:
             pattern = parameter_attribute.schema_info.pattern
-            res = rstr.xeger(pattern)
+            try:
+                res = rstr.xeger(pattern)
+            except re.error as e:
+                # Handle the regex error
+                print(f"Regex error: {e}")
+                res = ""
+
             return res
 
         # avoid body size too large
